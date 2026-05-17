@@ -278,7 +278,7 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
       l.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       l.phone?.includes(searchTerm);
     
-    if (filterStatus === 'all') return matchesSearch;
+    if (filterStatus === 'all' && type !== 'retention') return matchesSearch;
 
     if (type === 'retention') {
        if (filterFreqAmt) {
