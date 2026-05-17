@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "catalogue21-92e8b"
+  },
+  "targets": {
+    "catalogue21-92e8b": {
+      "hosting": {
+        "coldcall-target": [
+          "coldcall-admin"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

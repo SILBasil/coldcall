@@ -1,0 +1,651 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  PhoneCall, UserCheck, ChevronLeft, Calendar, Check, 
+  ShoppingBag, Save, Info, MessageSquare, AlertCircle, QrCode,
+  Loader2, History as HistoryIcon, Clock, Phone as PhoneIcon, RotateCcw, Facebook, X, Plus
+} from 'lucide-react';
+
+
+import { MONTHS_TRACKING, WEEKS } from '../../constants';
+import QRCodeModal from '../common/QRCodeModal';
+import { leadService } from '../../services/leadService';
+import ContactHistory from '../common/ContactHistory';
+import HistoryCalendar from '../common/HistoryCalendar';
+
+const STATUS_OPTIONS = [
+  { label: 'ปิดเครื่อง / ติดต่อไม่ได้', color: 'bg-rose-100 text-rose-600 border-rose-200' },
+  { label: 'ไม่สนใจ', color: 'bg-rose-500 text-white border-rose-600' },
+  { label: 'สั่งซื้อผ่านตัวแทนจำหน่าย', color: 'bg-orange-100 text-orange-600 border-orange-200' },
+  { label: 'สั่งซื้อตรงกับโรงงาน/CLM', color: 'bg-purple-100 text-purple-600 border-purple-200' },
+  { label: 'เลิกขาย/ปิดกิจการ', color: 'bg-slate-500 text-white border-slate-600' },
+  { label: 'ยังไม่สะดวกคุยตอนนี้', color: 'bg-amber-100 text-amber-600 border-amber-200' },
+  { label: 'เสนอขอตัวอย่างสินค้า', color: 'bg-emerald-100 text-emerald-600 border-emerald-200' },
+  { label: 'ลูกค้ามีสินค้าเหลือในสต็อก', color: 'bg-emerald-600 text-white border-emerald-700' },
+  { label: 'สั่งซื้อผ่านช่องทาง Shopee/Zort/Online', color: 'bg-orange-500 text-white border-orange-600' },
+  { label: 'ส่งเสนอราคาเรียบร้อย', color: 'bg-primary text-white border-primary-dark' },
+  { label: 'สั่งซื้อซ้ำสำเร็จ', color: 'bg-[#1E293B] text-white border-slate-900' },
+  { label: 'ยังไม่ถึงรอบสั่งซื้อซ้ำ', color: 'bg-amber-500 text-white border-amber-600' },
+  { label: 'ติดต่อยาก / รอสายยาว', color: 'bg-yellow-300 text-slate-800 border-yellow-400' },
+  { label: 'ต้องการของแถม/โปรโมชั่นพิเศษ', color: 'bg-pink-500 text-white border-pink-600' },
+];
+
+const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, currentAdminId, currentAdminName }) => {
+  const [gridData, setGridData] = useState(customer.gridData || {});
+  const [status, setStatus] = useState(customer.status || 'เสนอขอตัวอย่างสินค้า');
+  const [type, setType] = useState(customer.type || 'ยังไม่เคยเปิดบิล');
+  const [isQrOpen, setIsQrOpen] = useState(false);
+  const [activeDialPhone, setActiveDialPhone] = useState(customer.activePhone || customer.phone);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSocialEdit, setIsSocialEdit] = useState(false);
+  const [socialLinks, setSocialLinks] = useState({ 
+    lineId: customer.lineId || '', 
+    facebookUrl: customer.facebookUrl || '' 
+  });
+  const [remark, setRemark] = useState(customer.remark || '');
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [historyLogs, setHistoryLogs] = useState([]);
+  const [nextFollowUp, setNextFollowUp] = useState(null);
+  const [freq, setFreq] = useState({ 
+    amount: customer.freqAmount || 1, 
+    unit: customer.freqUnit || 'สัปดาห์' 
+  });
+  const openedAtRef = React.useRef(Date.now());
+
+  // Calculate next follow-up week based on latest activity in grid
+  useEffect(() => {
+    let latestOrderWeeks = -1;
+    let latestActivityWeeks = -1;
+
+    MONTHS_TRACKING.forEach((m, mIdx) => {
+      WEEKS.forEach(w => {
+        const total = mIdx * 4 + (w - 1);
+        if (gridData[`${m}-${w}-order`] || gridData[`${m}-${w}-followup`]) {
+          if (total > latestActivityWeeks) latestActivityWeeks = total;
+        }
+        if (gridData[`${m}-${w}-order`]) {
+          if (total > latestOrderWeeks) latestOrderWeeks = total;
+        }
+      });
+    });
+
+    // Baseline: Latest Order if exists, otherwise Latest Activity, otherwise Current Week
+    let baseline = latestOrderWeeks !== -1 ? latestOrderWeeks : latestActivityWeeks;
+    
+    if (baseline === -1) {
+      const now = new Date();
+      const day = now.getDate();
+      const curWeekIdx = day <= 7 ? 0 : day <= 14 ? 1 : day <= 21 ? 2 : 3;
+      baseline = now.getMonth() * 4 + curWeekIdx;
+    }
+
+    if (baseline !== -1) {
+      const increment = freq.unit === 'เดือน' ? freq.amount * 4 : freq.amount;
+      
+      // Calculate next follow-up that is AFTER the latest activity (Auto-advance)
+      let nextTotalWeeks = baseline + increment;
+      while (nextTotalWeeks <= latestActivityWeeks) {
+        nextTotalWeeks += increment;
+      }
+
+      const nextMonthIdx = Math.floor(nextTotalWeeks / 4) % 12;
+      const nWeek = (nextTotalWeeks % 4) + 1;
+      setNextFollowUp({ month: MONTHS_TRACKING[nextMonthIdx], week: nWeek });
+    } else {
+      setNextFollowUp(null);
+    }
+  }, [gridData, freq]);
+
+  // Pre-tick current week followup if not already ticked (Visual feedback for current work)
+  useEffect(() => {
+    const now = new Date();
+    const curMonth = MONTHS_TRACKING[now.getMonth()];
+    const day = now.getDate();
+    const curWeek = day <= 7 ? 1 : day <= 14 ? 2 : day <= 21 ? 3 : 4;
+    const keyF = `${curMonth}-${curWeek}-followup`;
+    const keyO = `${curMonth}-${curWeek}-order`;
+    
+    let updates = {};
+    if (!gridData[keyF]) updates[keyF] = true;
+    if (!gridData[keyO]) updates[keyO] = true;
+    
+    if (Object.keys(updates).length > 0) {
+      setGridData(prev => ({ ...prev, ...updates }));
+    }
+  }, []);
+
+
+  // Log 'open customer (Retention)' on mount and fetch history
+  useEffect(() => {
+    const init = async () => {
+      try {
+        await leadService.logActivity({
+          adminId: currentAdminId,
+          adminName: currentAdminName,
+          customerId: customer.id || customer.phone,
+          customerName: customer.name,
+          customerPhone: customer.phone,
+          customerStage: 'customer',
+          action: `เปิดข้อมูลการติดตามลูกค้าเก่า (Retention): ${customer.name}`,
+          type: 'open'
+        });
+        const logs = await leadService.getSaveSnapshots(customer.id);
+        setHistoryLogs(logs);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    init();
+  }, [customer.id]);
+
+
+  const handleSave = async () => {
+    setIsSubmitting(true);
+    try {
+      const duration = Math.floor((Date.now() - openedAtRef.current) / 1000);
+      
+      let updatedGrid = { ...gridData };
+      let updatedLastOrderDate = customer.lastOrderDate;
+
+      // Always mark the current week as "Followed up" (Checked) when saving
+      const now = new Date();
+      const curMonth = MONTHS_TRACKING[now.getMonth()];
+      const day = now.getDate();
+      const curWeek = day <= 7 ? 1 : day <= 14 ? 2 : day <= 21 ? 3 : 4;
+      
+      updatedGrid[`${curMonth}-${curWeek}-followup`] = true;
+
+      // Additionally mark as "Ordered" if status includes 'สั่งซื้อซ้ำ'
+      if (status && status.includes('สั่งซื้อซ้ำ')) {
+        updatedGrid[`${curMonth}-${curWeek}-order`] = true;
+        updatedLastOrderDate = now.toLocaleDateString('th-TH');
+      }
+
+      await leadService.updateCustomer(customer.id || customer.phone, {
+        gridData: updatedGrid,
+        status,
+        type,
+        remark,
+        freqAmount: freq.amount,
+        freqUnit: freq.unit,
+        lineId: socialLinks.lineId,
+        facebookUrl: socialLinks.facebookUrl,
+        lastCallDate: new Date().toLocaleDateString('th-TH'),
+        lastOrderDate: updatedLastOrderDate
+      });
+
+
+      await leadService.logActivity({
+        adminId: currentAdminId,
+        adminName: currentAdminName,
+        customerId: customer.id || customer.phone,
+        customerName: customer.name,
+        customerPhone: customer.phone,
+        previousStage: 'customer',
+        customerStage: 'customer',
+        action: `บันทึกการติดตามลูกค้าเก่า (Retention) - สถานะ: ${status}`,
+        type: 'save',
+        details: remark,
+        duration,
+        snapshot: { gridData: updatedGrid, status, type, remark, freqAmount: freq.amount, freqUnit: freq.unit }
+      });
+      
+      setGridData(updatedGrid);
+      
+      const updatedLogs = await leadService.getSaveSnapshots(customer.id || customer.phone);
+      setHistoryLogs(updatedLogs);
+
+      openedAtRef.current = Date.now(); // reset timer after save
+
+      showToast("บันทึกการติดตามลูกค้าเก่าสำเร็จ ระบบกำลังพากลับหน้าหลัก...");
+      
+      setTimeout(() => {
+        if (onBack) onBack();
+      }, 1500);
+    } catch (error) {
+      console.error('Error saving retention:', error);
+      showToast('เกิดข้อผิดพลาดในการบันทึกข้อมูลการติดตาม', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const logCall = async () => {
+    if (readonly) return;
+    try {
+      setIsSubmitting(true);
+
+      await leadService.logActivity({
+        adminId: currentAdminId,
+        adminName: currentAdminName,
+        customerId: customer.id,
+        customerName: customer.name,
+        customerPhone: customer.phone,
+        previousStage: 'customer',
+        customerStage: 'customer',
+        action: `โทรหาลูกค้าเก่า (Retention): ${status}`,
+        type: 'call',
+        details: remark
+      });
+      showToast("บันทึกประวัติการโทรสำเร็จ");
+    } catch (error) {
+       showToast("เกิดข้อผิดพลาดในการบันทึกประวัติการโทร", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const toggleGrid = (month, week, type) => {
+    if (readonly) return;
+    const key = `${month}-${week}-${type}`;
+    const newState = !gridData[key];
+    const updatedGrid = { ...gridData, [key]: newState };
+    setGridData(updatedGrid);
+
+    const orderKey = `${month}-${week}-order`;
+    const followupKey = `${month}-${week}-followup`;
+    const hasFollowup = updatedGrid[followupKey];
+    const hasOrder = updatedGrid[orderKey];
+
+    let delta = 0;
+    if (type === 'followup') {
+      if (newState && !hasOrder) delta = 1;
+      if (!newState && !hasOrder) delta = -1;
+    } else if (type === 'order') {
+      if (newState && hasFollowup) delta = -1;
+      if (!newState && hasFollowup) delta = 1;
+    }
+
+    if (delta !== 0) {
+      setFreq(prev => {
+        let newAmount = prev.amount + delta;
+        let newUnit = prev.unit;
+        if (delta > 0) {
+          if (newUnit === 'สัปดาห์' && newAmount > 4) { newAmount = 1; newUnit = 'เดือน'; }
+        } else {
+          if (newAmount < 1) { if (newUnit === 'เดือน') { newAmount = 4; newUnit = 'สัปดาห์'; } else { newAmount = 1; } }
+        }
+        return { amount: newAmount, unit: newUnit };
+      });
+    }
+  };
+
+  const currentStatusStyle = STATUS_OPTIONS.find(s => s.label === status)?.color || 'bg-slate-100 text-slate-800 border-slate-200';
+
+  return (
+    <div className="space-y-4 animate-in fade-in duration-500 pb-5">
+      {/* Profile Header - Premium Style */}
+      <div className="bg-white rounded-3xl shadow-sm p-4 flex flex-wrap items-center justify-between border-l-[6px] border-emerald-500 gap-4 group">
+        <div className="flex items-center gap-6">
+          {/* Back Button on the far left */}
+          <button
+              onClick={onBack}
+              className="group/back flex items-center gap-3 px-4 py-2 bg-slate-50 hover:bg-white text-slate-600 hover:text-slate-900 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] transition-all border border-transparent hover:border-slate-100 shadow-sm active:scale-95 cursor-pointer"
+            >
+              <div className="p-1.5 bg-white group-hover/back:bg-emerald-50 rounded-xl transition-colors">
+                <ChevronLeft size={16} className="group-hover/back:-translate-x-0.5 transition-transform" /> 
+              </div>
+              <span className="hidden md:inline">Back</span>
+          </button>
+
+          <div className="flex items-center gap-4">
+            <div className="h-14 w-14 bg-slate-50 rounded-[1.25rem] flex items-center justify-center text-xl font-black text-slate-800 shrink-0 shadow-inner border border-slate-100 group-hover:scale-105 transition-transform duration-500">
+              {customer.name.charAt(0)}
+            </div>
+            <div>
+              <div className="text-xl font-black text-slate-900 leading-none mb-1.5 tracking-tighter italic">{customer.name}</div>
+              <div className="flex flex-wrap gap-4 text-[11px] font-black text-slate-600 uppercase tracking-widest italic">
+                <div className="flex flex-wrap gap-2 mt-1">
+                   <div 
+                     className={`flex items-center gap-2 group/phone cursor-pointer px-2 py-1 rounded-lg border transition-all ${activeDialPhone === customer.phone ? 'bg-emerald-100 border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-100 text-slate-500 hover:bg-white'}`}
+                     onClick={() => {
+                        setActiveDialPhone(customer.phone);
+                        setIsQrOpen(true);
+                     }}
+                   >
+                      <PhoneCall size={10} className={activeDialPhone === customer.phone ? 'text-emerald-600' : 'text-slate-400'} /> 
+                      <span className="font-black tracking-tight">{customer.phone}</span>
+                      <QrCode size={10} className="opacity-40" />
+                   </div>
+
+                   {customer.allPhones?.filter(p => p !== customer.phone).map((p, i) => (
+                     <div 
+                       key={i}
+                       className={`flex items-center gap-2 group/phone cursor-pointer px-2 py-1 rounded-lg border transition-all ${activeDialPhone === p ? 'bg-emerald-100 border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-100 text-slate-500 hover:bg-white'}`}
+                       onClick={() => {
+                          setActiveDialPhone(p);
+                          setIsQrOpen(true);
+                       }}
+                     >
+                        <PhoneCall size={10} className={activeDialPhone === p ? 'text-emerald-600' : 'text-slate-400'} /> 
+                        <span className="font-black tracking-tight">{p}</span>
+                        <QrCode size={10} className="opacity-40" />
+                     </div>
+                   ))}
+                </div>
+                <div className="flex items-center gap-2">
+                   <div className="p-1.5 bg-emerald-50 rounded-lg">
+                      <UserCheck size={12} className="text-emerald-600" /> 
+                   </div>
+                   {customer.responsibleName || 'N/A'}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-2 relative">
+             {/* Edit Social Input Popover */}
+             {isSocialEdit && (
+               <div className="absolute top-full right-0 mt-3 p-4 bg-white rounded-2xl shadow-xl border border-slate-100 z-50 w-72 animate-in slide-in-from-top-2 duration-300">
+                  <div className="text-[10px] font-black text-slate-600 uppercase tracking-widest mb-3 italic text-left">Social Connect (Retention)</div>
+                  <div className="space-y-3">
+                     <div className="space-y-1">
+                        <label className="text-[9px] font-black text-[#06C755] uppercase tracking-widest pl-1 italic block text-left">LINE ID / OA ID</label>
+                        <input 
+                           type="text" 
+                           value={socialLinks.lineId}
+                           onChange={(e) => setSocialLinks({...socialLinks, lineId: e.target.value})}
+                           placeholder="Ex. @shop_name"
+                           className="w-full bg-slate-50 px-3 py-1.5 rounded-xl text-[11px] font-black border border-slate-100 outline-none focus:border-[#06C755]/30 shadow-inner"
+                        />
+                     </div>
+                     <div className="space-y-1">
+                        <label className="text-[9px] font-black text-[#1877F2] uppercase tracking-widest pl-1 italic block text-left">Facebook Profile / Page</label>
+                        <input 
+                           type="text" 
+                           value={socialLinks.facebookUrl}
+                           onChange={(e) => setSocialLinks({...socialLinks, facebookUrl: e.target.value})}
+                           placeholder="Ex. https://fb.com/..."
+                           className="w-full bg-slate-50 px-3 py-1.5 rounded-xl text-[11px] font-black border border-slate-100 outline-none focus:border-[#1877F2]/30 shadow-inner"
+                        />
+                     </div>
+                     <button 
+                       onClick={() => setIsSocialEdit(false)}
+                       className="w-full py-2 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-primary transition-all mt-1 cursor-pointer border-none"
+                     >
+                       ปิดหน้าต่างนี้
+                     </button>
+                  </div>
+               </div>
+             )}
+
+            <button 
+               onClick={() => {
+                 const s = !isHistoryOpen;
+                 setIsHistoryOpen(s);
+                 if (s) setIsSocialEdit(false);
+               }}
+               className={`px-4 py-2 rounded-2xl transition-all text-[10px] font-black uppercase tracking-widest shadow-sm flex items-center gap-2 border-none cursor-pointer ${isHistoryOpen ? 'bg-primary text-white' : 'bg-white text-slate-600 border border-slate-100 hover:bg-slate-50'}`}
+             >
+               <HistoryIcon size={14} />
+               ดูประวัติย้อนหลัง
+             </button>
+
+            <div className="w-px h-8 bg-slate-100 mx-1 self-center" />
+
+            <button 
+               onClick={async () => {
+                 try {
+                   if (socialLinks.lineId) {
+                      const id = socialLinks.lineId.startsWith('@') ? socialLinks.lineId.slice(1) : socialLinks.lineId;
+                      const url = socialLinks.lineId.startsWith('@') 
+                        ? `https://line.me/R/ti/p/${id}`
+                        : `https://line.me/ti/p/~${id}`;
+                      window.open(url, '_blank');
+                   }
+                   await navigator.clipboard.writeText(`สวัสดีครับคุณ ${customer.name}... (ติดตามการสั่งซื้อ)`);
+
+                   showToast(socialLinks.lineId ? "คัดลอกข้อความและเปิด LINE เรียบร้อย" : "คัดลอกข้อความทักทายของกลุ่ม Retention เรียบร้อย (ไม่มี LINE ID)");
+                 } catch (err) {
+                   console.error(err);
+                 }
+               }}
+               className={`px-4 py-2 transition-all text-[10px] font-black uppercase tracking-widest shadow-sm flex items-center gap-2 rounded-2xl group/line border-none cursor-pointer ${socialLinks.lineId ? 'bg-[#06C755] text-white' : 'bg-white text-[#06C755] border border-[#06C755]/20 hover:bg-[#06C755] hover:text-white'}`}
+             >
+               <div className={`p-1 rounded-lg transition-colors ${socialLinks.lineId ? 'bg-white/20' : 'bg-[#06C755]/10 group-hover/line:bg-white/20'}`}>
+                  <MessageSquare size={14} />
+               </div>
+               LINE
+             </button>
+             <button 
+               onClick={async () => {
+                 try {
+                   if (socialLinks.facebookUrl) {
+                      window.open(socialLinks.facebookUrl, '_blank');
+                   } else {
+                      const searchUrl = `https://www.facebook.com/search/top/?q=${encodeURIComponent(customer.name)}`;
+                      window.open(searchUrl, '_blank');
+                   }
+                   await navigator.clipboard.writeText(`สวัสดีครับคุณ ${customer.name}... (ติดตามการสั่งซื้อ)`);
+
+                   showToast("คัดลอกข้อความและเปิดหน้าค้นหา Facebook เรียบร้อย");
+                 } catch (err) {
+                   console.error(err);
+                 }
+               }}
+               className={`px-4 py-2 transition-all text-[10px] font-black uppercase tracking-widest shadow-sm flex items-center gap-2 rounded-2xl group/fb border-none cursor-pointer ${socialLinks.facebookUrl ? 'bg-[#1877F2] text-white' : 'bg-white text-[#1877F2] border border-[#1877F2]/20 hover:bg-[#1877F2] hover:text-white'}`}
+             >
+               <div className={`p-1 rounded-lg transition-colors ${socialLinks.facebookUrl ? 'bg-white/20' : 'bg-[#1877F2]/10 group-hover/fb:bg-white/20'}`}>
+                  <Facebook size={14} /> 
+               </div>
+               FB
+             </button>
+
+             <button 
+               onClick={() => {
+                 const s = !isSocialEdit;
+                 setIsSocialEdit(s);
+                 if (s) setIsHistoryOpen(false);
+               }}
+               className={`p-2 rounded-xl transition-all border cursor-pointer ${isSocialEdit ? 'bg-slate-900 border-slate-900 text-white' : 'bg-slate-50 border-slate-100 text-slate-600 hover:text-emerald-500 hover:border-emerald-500/20'}`}
+               title="Update Social Links"
+             >
+                <Plus size={16} />
+             </button>
+
+
+
+
+             {isHistoryOpen && (
+               <HistoryCalendar 
+                 logs={historyLogs}
+                 onClose={() => setIsHistoryOpen(false)}
+                 onRestore={(snapshot) => {
+                   if (snapshot.gridData) setGridData(snapshot.gridData);
+                   if (snapshot.status) setStatus(snapshot.status);
+                   if (snapshot.type) setType(snapshot.type);
+                   if (snapshot.remark) setRemark(snapshot.remark);
+                   if (snapshot.freqAmount) setFreq(prev => ({ ...prev, amount: snapshot.freqAmount }));
+                   if (snapshot.freqUnit) setFreq(prev => ({ ...prev, unit: snapshot.freqUnit }));
+                   showToast("ดึงข้อมูลย้อนหลังจากประวัติสำเร็จ");
+                   setIsHistoryOpen(false);
+                 }}
+               />
+             )}
+          </div>
+       </div>
+
+       <div className={`grid grid-cols-1 lg:grid-cols-12 gap-4 items-start ${readonly && 'opacity-80 pointer-events-none'}`}>
+         <div className="lg:col-span-8 space-y-4">
+           <div className="bg-white rounded-3xl shadow-sm p-4 grid grid-cols-1 md:grid-cols-2 gap-4 relative border border-slate-100">
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1 pl-1 italic">กลุ่มลูกค้า</label>
+                <select
+                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-xl font-black text-[12px] outline-none focus:border-primary transition-all cursor-pointer"
+                  value={type}
+                  onChange={(e) => setType(e.target.value)}
+                >
+                  <option>ยังไม่เคยเปิดบิล</option>
+                  <option>เคยสั่งซื้อซ้ำ</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1 pl-1 italic">สถานะการติดตาม</label>
+                <select
+                  className={`w-full px-3 py-1.5 border rounded-xl font-black text-[12px] outline-none transition-all cursor-pointer ${currentStatusStyle}`}
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                >
+                  {STATUS_OPTIONS.map(opt => (
+                    <option key={opt.label} value={opt.label} className="bg-white text-slate-900">{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+           </div>
+
+           <div className="bg-white rounded-3xl shadow-sm overflow-hidden border border-slate-100">
+             <div className="bg-slate-50/50 px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
+               <div className="flex items-center gap-2">
+                 <Calendar size={14} className="text-primary" />
+                 <div className="text-[11px] font-black text-slate-900 tracking-[0.1em] uppercase italic">ตารางวางแผนการติดตามลูกค้า (12 เดือน)</div>
+               </div>
+               <div className="flex gap-4 text-[9px] font-black uppercase tracking-widest text-slate-600 italic">
+                 <span className="flex items-center gap-1.5"><Check size={10} className="text-primary"/> CHECK</span>
+                 <span className="flex items-center gap-1.5"><ShoppingBag size={10} className="text-emerald-500"/> ORDER</span>
+               </div>
+             </div>
+             <div className="overflow-x-auto overflow-y-auto max-h-[450px]">
+               <table className="w-full border-separate border-spacing-0">
+                 <thead className="sticky top-0 z-20">
+                   <tr className="text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-50/80">
+                     <th className="sticky top-0 left-0 z-30 px-4 py-2 text-left border-b border-r border-slate-100 bg-slate-50 w-24">Month</th>
+                     {WEEKS.map(w => (
+                       <th key={w} className="px-2 py-2 border-b border-r border-slate-100 last:border-r-0">WK {w}</th>
+                     ))}
+                   </tr>
+                 </thead>
+                 <tbody className="divide-y divide-slate-50">
+                   {MONTHS_TRACKING.map(month => (
+                     <tr key={month} className="hover:bg-slate-50/30 transition-colors">
+                       <td className="sticky left-0 z-10 px-4 py-2 border-r border-slate-50 bg-white font-black text-slate-800 text-[12px] italic">{month}</td>
+                       {WEEKS.map(week => (
+                         <td key={week} className="p-2 border-r border-slate-50 last:border-r-0">
+                           <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                onClick={() => toggleGrid(month, week, 'followup')}
+                                className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all border border-solid cursor-pointer
+                                  ${gridData[`${month}-${week}-followup`] ? 'bg-primary border-primary text-white shadow-sm' : 'bg-white border-slate-100 text-slate-200 hover:border-primary/20'}`}
+                                style={nextFollowUp?.month === month && nextFollowUp?.week === week ? {
+                                  boxShadow: '0 0 0 4px #fbbf24, 0 0 20px rgba(251, 191, 36, 0.8)',
+                                  transform: 'scale(1.15)',
+                                  zIndex: 10,
+                                  borderColor: '#fbbf24'
+                                } : {}}
+                                title={nextFollowUp?.month === month && nextFollowUp?.week === week ? 'รอบการติดตามครั้งถัดไป' : ''}
+                              >
+                                <Check size={12} strokeWidth={3} />
+                              </button>
+                              <button
+                                onClick={() => toggleGrid(month, week, 'order')}
+                                className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all border border-solid cursor-pointer ${gridData[`${month}-${week}-order`] ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm' : 'bg-white border-slate-100 text-slate-200 hover:border-emerald-500/20'}`}
+                              >
+                                <ShoppingBag size={12} strokeWidth={2} />
+                              </button>
+                           </div>
+                         </td>
+                       ))}
+                     </tr>
+                   ))}
+                 </tbody>
+               </table>
+             </div>
+           </div>
+         </div>
+
+         <div className="lg:col-span-4 space-y-4">
+           <div className="bg-white rounded-3xl shadow-sm p-4 border-t-[6px] border-primary space-y-4">
+             <div className="flex items-center gap-2 border-b border-slate-50 pb-2">
+                <HistoryIcon size={14} className="text-primary" />
+                <div className="text-[10px] font-black text-slate-900 uppercase tracking-widest italic">Tracking History</div>
+             </div>
+
+             <div className="grid grid-cols-2 gap-2">
+               <div className="bg-slate-50/50 rounded-xl p-2.5 border border-slate-100 shadow-inner">
+                 <label className="block text-[9px] font-black text-slate-600 uppercase mb-1 italic">Last Call</label>
+                 <div className="text-[11px] font-black text-slate-800 tracking-tight">{customer.lastCallDate || '-'}</div>
+               </div>
+               <div className="bg-slate-50/50 rounded-xl p-2.5 border border-slate-100 shadow-inner">
+                 <label className="block text-[9px] font-black text-slate-600 uppercase mb-1 italic">Last Order</label>
+                 <div className="text-[11px] font-black text-slate-800 tracking-tight">{customer.lastOrderDate || '-'}</div>
+               </div>
+             </div>
+
+             <div className="grid grid-cols-2 gap-2">
+               <div className="bg-slate-50/50 rounded-xl p-2.5 border border-slate-100 shadow-inner">
+                 <label className="block text-[9px] font-black text-slate-600 uppercase mb-1 italic">FREQ (Amt)</label>
+                 <input 
+                   type="number" 
+                   value={freq.amount}
+                   onChange={(e) => setFreq({ ...freq, amount: parseInt(e.target.value) || 0 })}
+                   className="w-full bg-transparent text-[11px] font-black outline-none border-b border-primary/20 focus:border-primary text-slate-800"
+                 />
+               </div>
+               <div className="bg-slate-50/50 rounded-xl p-2.5 border border-slate-100 shadow-inner">
+                 <label className="block text-[9px] font-black text-slate-600 uppercase mb-1 italic">Unit</label>
+                 <select 
+                   className="w-full bg-transparent text-[11px] font-black outline-none cursor-pointer text-slate-800"
+                   value={freq.unit}
+                   onChange={(e) => setFreq({ ...freq, unit: e.target.value })}
+                 >
+                   <option value="สัปดาห์">สัปดาห์</option>
+                   <option value="เดือน">เดือน</option>
+                 </select>
+               </div>
+             </div>
+
+             <div className="space-y-1.5">
+               <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest italic pl-1">Latest Remark</label>
+               <textarea 
+                 placeholder="..." 
+                 value={remark}
+                 onChange={(e) => setRemark(e.target.value)}
+                 className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[11px] font-black outline-none focus:border-primary h-24 resize-none leading-relaxed shadow-inner" 
+               />
+             </div>
+
+             {!readonly && (
+               <div className="space-y-3 pt-2">
+                 <button
+                   onClick={handleSave}
+                   disabled={isSubmitting}
+                   className="w-full py-3 bg-primary hover:bg-slate-900 text-white rounded-xl font-black text-[12px] shadow transition-all active:scale-95 uppercase flex items-center justify-center gap-2 shadow-primary/20 cursor-pointer border-none"
+                 >
+                   {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                   <span>{isSubmitting ? 'SAVING...' : 'บันทึกการติดตาม'}</span>
+                 </button>
+               </div>
+             )}
+          </div>
+
+          <div className="bg-white rounded-3xl p-4 border border-slate-100 shadow-sm space-y-4">
+             <div className="flex items-center gap-2 border-b border-slate-50 pb-2">
+                <HistoryIcon size={14} className="text-primary" />
+                <div className="text-[10px] font-black uppercase tracking-widest text-slate-900 italic">Audit Log</div>
+                {!readonly && (
+                   <button 
+                     onClick={logCall}
+                     className="ml-auto px-2 py-1 bg-slate-50 text-slate-600 border border-slate-100 rounded-lg text-[9px] font-black uppercase hover:bg-primary hover:text-white transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+                   >
+                     <PhoneIcon size={10} /> LOG CALL
+                   </button>
+                )}
+             </div>
+             <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
+                <ContactHistory customerId={customer.id} />
+             </div>
+          </div>
+        </div>
+      </div>
+
+
+       <QRCodeModal 
+        isOpen={isQrOpen} 
+        onClose={() => setIsQrOpen(false)} 
+        phone={activeDialPhone} 
+        name={customer.name} 
+      />
+    </div>
+  );
+};
+
+export default RetentionTrackingForm;
