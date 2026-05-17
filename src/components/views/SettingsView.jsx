@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, List, Database, Plus, Trash2, X, Loader2, AlertTriangle, ShieldX, RotateCw, Palette, ChevronRight } from 'lucide-react';
+import { Users, List, Database, Plus, Trash2, X, Loader2, AlertTriangle, ShieldX, RotateCw, Palette, ChevronRight, ShoppingBag, Repeat } from 'lucide-react';
 import { leadService } from '../../services/leadService';
 
 // ─── Sub Pages ───────────────────────────────────────────────────────────────
@@ -294,6 +294,7 @@ const DataPage = () => {
   const [evolutionStep, setEvolutionStep] = useState(0);
   const [evolving, setEvolving] = useState(false);
   const [injecting, setInjecting] = useState(false);
+  const [injectingRetention, setInjectingRetention] = useState(false);
 
   useEffect(() => {
     const fetchStep = async () => {
@@ -329,6 +330,22 @@ const DataPage = () => {
       setInjecting(false);
     }
   };
+
+  const handleInjectMockupRetentionLeads = async () => {
+    if (!window.confirm('ต้องการนำเข้ารายชื่อลูกค้าประจำจำลองจำนวน 10 คนที่มีประวัติการซื้อต่างกัน (ซื้อครั้งเดียว, ซื้อซ้ำสัปดาห์เดียวกัน, ซื้อคนละวัน/สัปดาห์/เดือน) ที่ยังไม่ได้มอบหมายงาน ใช่หรือไม่?')) return;
+    try {
+      setInjectingRetention(true);
+      const res = await leadService.injectUnassignedMockupRetentionCustomers(10);
+      if (res.success) {
+        alert(`✅ นำเข้ารายชื่อลูกค้าประจำจำลองจำนวน ${res.count} คนเสร็จเรียบร้อยแล้ว! สามารถไปที่เมนู 'มอบหมายงาน > แท็บลูกค้าประจำ' เพื่อเลือกแอดมินผู้ดูแลได้ทันที`);
+      }
+    } catch (err) {
+      alert('❌ เกิดข้อผิดพลาด: ' + err.message);
+    } finally {
+      setInjectingRetention(false);
+    }
+  };
+
 
   const handleSync = async () => {
     if (!window.confirm('ต้องการดึงข้อมูลจาก Google Sheet ใช่หรือไม่? อาจใช้เวลา 1-2 นาที')) return;
@@ -464,6 +481,17 @@ const DataPage = () => {
         onClick={handleInjectMockupLeads}
         loading={injecting}
         loadingLabel="กำลังนำเข้าข้อมูลลูกค้าจำลอง..."
+      />
+
+      <ActionCard
+        icon={<ShoppingBag size={22} />}
+        title="นำเข้ารายชื่อลูกค้าประจำจำลอง (Unassigned Retention Customers)"
+        desc="นำเข้าข้อมูลลูกค้าประจำ 10 รายที่มีประวัติการสั่งซื้อครบครัน โดยไม่มีการระบุผู้ดูแล เพื่อให้ผู้จัดการ (Manager) ทดสอบระบบมอบหมายงานและการติดตามลูกค้าประจำ (Retention) ได้ทันที มีประวัติซื้อครั้งเดียว ซื้อต่างสัปดาห์ ต่างเดือน และซื้อสองครั้งในสัปดาห์เดียวกันคนละวันตามโจทย์จริง"
+        buttonLabel="✨ นำเข้ารายชื่อลูกค้าประจำจำลอง 10 คน"
+        buttonColor="emerald"
+        onClick={handleInjectMockupRetentionLeads}
+        loading={injectingRetention}
+        loadingLabel="กำลังนำเข้าลูกค้าประจำจำลอง..."
       />
 
       <div className="border-t border-slate-200 pt-6">

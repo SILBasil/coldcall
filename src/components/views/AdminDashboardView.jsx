@@ -369,7 +369,7 @@ const AdminDashboardView = ({ adminId, onNextLead, onSelectCustomer }) => {
             <div className="relative z-10 flex items-center gap-4 mb-4">
               <div className="p-3 bg-indigo-100 rounded-2xl text-indigo-600 shadow-sm"><Users size={28}/></div>
               <div>
-                <h3 className="text-xl font-black text-slate-900 tracking-tighter uppercase">รายชื่อลีดใหม่ / ลูกค้ารอตัดสินใจ</h3>
+                <h3 className="text-xl font-black text-slate-900 tracking-tighter uppercase">รายชื่อเบอร์ใหม่ / ลูกค้ารอตัดสินใจ</h3>
                 <p className="text-sm font-black text-indigo-600 uppercase tracking-widest italic">ช่วงงานประจำสัปดาห์ {dateRangeStr}</p>
               </div>
             </div>
@@ -525,7 +525,7 @@ const AdminDashboardView = ({ adminId, onNextLead, onSelectCustomer }) => {
             </div>
             <div className="flex gap-5 bg-white px-5 py-2.5 rounded-2xl border border-slate-100 shadow-sm">
                <div className="flex items-center gap-2.5"><div className="w-3.5 h-3.5 rounded bg-sky-400 shadow-sm shadow-sky-100" /><span className="text-xs font-black text-slate-500 uppercase">งานลูกค้าประจำ</span></div>
-               <div className="flex items-center gap-2.5"><div className="w-3.5 h-3.5 rounded bg-indigo-500 shadow-sm shadow-indigo-100" /><span className="text-xs font-black text-slate-500 uppercase">ลีดใหม่/รอตัดสินใจ</span></div>
+               <div className="flex items-center gap-2.5"><div className="w-3.5 h-3.5 rounded bg-indigo-500 shadow-sm shadow-indigo-100" /><span className="text-xs font-black text-slate-500 uppercase">เบอร์ใหม่/รอตัดสินใจ</span></div>
             </div>
           </div>
           
@@ -549,7 +549,7 @@ const AdminDashboardView = ({ adminId, onNextLead, onSelectCustomer }) => {
                       <div className="w-full flex justify-center gap-2 md:gap-3 items-end h-[90%] relative">
                           {/* Tooltip */}
                           <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[11px] font-black px-4 py-2.5 rounded-2xl opacity-0 group-hover:opacity-100 transition-all z-20 pointer-events-none whitespace-nowrap shadow-2xl border border-slate-700">
-                             ติดต่อกลับ: {d.followUps} | ลีดใหม่: {d.newLeads} ราย
+                             ติดต่อกลับ: {d.followUps} | เบอร์ใหม่: {d.newLeads} ราย
                              <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-900 rotate-45 border-r border-b border-slate-700" />
                           </div>
                           

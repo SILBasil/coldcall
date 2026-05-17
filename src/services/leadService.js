@@ -1803,6 +1803,217 @@ export const leadService = {
       console.error("injectUnassignedMockupCustomers error:", e);
       throw e;
     }
+  },
+
+  async injectUnassignedMockupRetentionCustomers(count = 10) {
+    try {
+      const mockProfiles = [
+        {
+          name: "คุณสุเทพ รุ่งเรืองค้าส่ง (อ.เมือง จ.เชียงใหม่)",
+          phone: "0811112222",
+          businessType: "ร้านขายของชำขนาดใหญ่",
+          stage: "customer",
+          status: "สั่งซื้อซ้ำสำเร็จ",
+          lastOrderDate: "2026-01-05",
+          freqAmount: 1,
+          freqUnit: "เดือน",
+          gridData: { "มกราคม-1-followup": true, "มกราคม-1-order": true }
+        },
+        {
+          name: "หจก. อุดมทรัพย์ โลหะกิจ (อ.กระทุ่มแบน จ.สมุทรสาคร)",
+          phone: "0822223333",
+          businessType: "โรงงานแปรรูปเหล็กและโลหะ",
+          stage: "customer",
+          status: "สั่งซื้อซ้ำสำเร็จ",
+          lastOrderDate: "2026-01-15",
+          freqAmount: 2,
+          freqUnit: "สัปดาห์",
+          gridData: { "มกราคม-2-followup": true, "มกราคม-2-order": true },
+          orders: [
+            { date: "2026-01-12", note: "สั่งซื้อกล่องอะไหล่ครั้งแรก ยอด 4,500 บาท" },
+            { date: "2026-01-15", note: "สั่งซื้อเพิ่มเติมฉุกเฉิน ยอด 2,200 บาท" }
+          ]
+        },
+        {
+          name: "ร้านเจ๊นา อาหารทะเลแช่แข็ง (ตลาดมหาชัย จ.สมุทรสาคร)",
+          phone: "0833334444",
+          businessType: "จำหน่ายอาหารทะเลและปลาแช่แข็ง",
+          stage: "customer",
+          status: "สั่งซื้อซ้ำสำเร็จ",
+          lastOrderDate: "2026-01-22",
+          freqAmount: 1,
+          freqUnit: "เดือน",
+          gridData: {
+            "มกราคม-1-followup": true, "มกราคม-1-order": true,
+            "มกราคม-3-followup": true, "มกราคม-3-order": true
+          }
+        },
+        {
+          name: "คุณสมศักดิ์ บริการยางยนต์ (อ.บางพลี จ.สมุทรปราการ)",
+          phone: "0844445555",
+          businessType: "ร้านจำหน่ายและบริการยางรถยนต์",
+          stage: "customer",
+          status: "สั่งซื้อซ้ำสำเร็จ",
+          lastOrderDate: "2026-02-12",
+          freqAmount: 2,
+          freqUnit: "สัปดาห์",
+          gridData: {
+            "มกราคม-2-followup": true, "มกราคม-2-order": true,
+            "กุมภาพันธ์-2-followup": true, "กุมภาพันธ์-2-order": true
+          }
+        },
+        {
+          name: "บริษัท ทีพี เซ็นทรัล มาร์ท จำกัด (เขตภาษีเจริญ กรุงเทพฯ)",
+          phone: "0855556666",
+          businessType: "ซูเปอร์มาร์เก็ตค้าปลีกท้องถิ่น",
+          stage: "customer",
+          status: "สั่งซื้อซ้ำสำเร็จ",
+          lastOrderDate: "2026-02-26",
+          freqAmount: 4,
+          freqUnit: "สัปดาห์",
+          gridData: {
+            "มกราคม-4-followup": true, "มกราคม-4-order": true,
+            "กุมภาพันธ์-4-followup": true, "กุมภาพันธ์-4-order": true
+          }
+        },
+        {
+          name: "คุณพัชรา การพิมพ์ (ถ.บรรทัดทอง กรุงเทพฯ)",
+          phone: "0866667777",
+          businessType: "ร้านบริการสิ่งพิมพ์และบรรจุภัณฑ์กล่อง",
+          stage: "customer",
+          status: "สั่งซื้อซ้ำสำเร็จ",
+          lastOrderDate: "2026-02-05",
+          freqAmount: 1,
+          freqUnit: "เดือน",
+          gridData: { "กุมภาพันธ์-1-followup": true, "กุมภาพันธ์-1-order": true }
+        },
+        {
+          name: "หจก. ศิริชัยพลาสติกคาร์ตัน (อ.พานทอง จ.ชลบุรี)",
+          phone: "0877778888",
+          businessType: "ผู้ผลิตและจัดจำหน่ายชิ้นส่วนพลาสติก",
+          stage: "customer",
+          status: "สั่งซื้อซ้ำสำเร็จ",
+          lastOrderDate: "2026-02-20",
+          freqAmount: 1,
+          freqUnit: "สัปดาห์",
+          gridData: { "กุมภาพันธ์-3-followup": true, "กุมภาพันธ์-3-order": true },
+          orders: [
+            { date: "2026-02-17", note: "สั่งซื้อชุดกล่องเก็บอุปกรณ์ ยอด 5,900 บาท" },
+            { date: "2026-02-20", note: "สั่งซื้อเพิ่มกล่องขนาดเล็ก ยอด 3,100 บาท" }
+          ]
+        },
+        {
+          name: "ร้านค้าสวัสดิการชุมชนบ้านแสนสุข (อ.ศรีราชา จ.ชลบุรี)",
+          phone: "0888889999",
+          businessType: "ร้านสหกรณ์ชุมชนและสินค้าอุปโภคบริโภค",
+          stage: "customer",
+          status: "สั่งซื้อซ้ำสำเร็จ",
+          lastOrderDate: "2026-02-26",
+          freqAmount: 2,
+          freqUnit: "สัปดาห์",
+          gridData: {
+            "กุมภาพันธ์-2-followup": true, "กุมภาพันธ์-2-order": true,
+            "กุมภาพันธ์-4-followup": true, "กุมภาพันธ์-4-order": true
+          }
+        },
+        {
+          name: "คุณดนัย สวนไม้ดอกไม้ประดับ (อ.คลองหลวง จ.ปทุมธานี)",
+          phone: "0899990000",
+          businessType: "สวนจำหน่ายพันธุ์ไม้และอุปกรณ์จัดสวน",
+          stage: "customer",
+          status: "สั่งซื้อซ้ำสำเร็จ",
+          lastOrderDate: "2026-03-19",
+          freqAmount: 1,
+          freqUnit: "เดือน",
+          gridData: {
+            "มกราคม-3-followup": true, "มกราคม-3-order": true,
+            "มีนาคม-3-followup": true, "มีนาคม-3-order": true
+          }
+        },
+        {
+          name: "บริษัท ธนากล๊าส แอนด์ เซรามิค จำกัด (อ.สามพราน จ.นครปฐม)",
+          phone: "0800001111",
+          businessType: "ผู้จำหน่ายและแปรรูปผลิตภัณฑ์แก้วและเซรามิก",
+          stage: "customer",
+          status: "สั่งซื้อซ้ำสำเร็จ",
+          lastOrderDate: "2026-03-05",
+          freqAmount: 3,
+          freqUnit: "สัปดาห์",
+          gridData: {
+            "กุมภาพันธ์-1-followup": true, "กุมภาพันธ์-1-order": true,
+            "มีนาคม-1-followup": true, "มีนาคม-1-order": true
+          }
+        }
+      ];
+
+      const batch = writeBatch(db);
+      let injectedCount = 0;
+
+      for (let i = 0; i < Math.min(count, mockProfiles.length); i++) {
+        const p = mockProfiles[i];
+        const docRef = doc(db, CUSTOMERS_COL, p.phone);
+        
+        batch.set(docRef, {
+          phone: p.phone,
+          name: p.name,
+          customerNo: `RC-${1000 + i}`,
+          businessType: p.businessType,
+          stage: p.stage,
+          status: p.status,
+          type: "ลูกค้าประจำ",
+          source: "Mockup Retention Inject",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          responsibleId: null,
+          responsibleName: "Unassigned",
+          freqAmount: p.freqAmount,
+          freqUnit: p.freqUnit,
+          lastOrderDate: p.lastOrderDate,
+          gridData: p.gridData || {},
+          stats: { callCount: 1 }
+        });
+
+        // Seed contact/order history logs for this customer
+        const logId1 = `${p.phone}_init_order`;
+        batch.set(doc(db, ACTIVITY_LOGS_COL, logId1), {
+          action: `สั่งซื้อครั้งแรกสำเร็จ ยอดซื้อเรียบร้อย`,
+          type: 'sale',
+          adminId: 'system',
+          adminName: 'ระบบอัตโนมัติ',
+          customerId: p.phone,
+          customerName: p.name,
+          customerPhone: p.phone,
+          customerStage: 'customer',
+          createdAt: serverTimestamp()
+        });
+
+        // If they ordered twice (e.g. Profile 2 and Profile 7), seed the extra logs on different days!
+        if (p.orders) {
+          p.orders.forEach((order, ordIdx) => {
+            const extraLogId = `${p.phone}_extra_${ordIdx}`;
+            batch.set(doc(db, ACTIVITY_LOGS_COL, extraLogId), {
+              action: `ใบสั่งซื้อซ้ำ: ${order.note} วันที่สั่ง ${order.date}`,
+              type: 'sale',
+              adminId: 'system',
+              adminName: 'ระบบอัตโนมัติ',
+              customerId: p.phone,
+              customerName: p.name,
+              customerPhone: p.phone,
+              customerStage: 'customer',
+              createdAt: serverTimestamp()
+            });
+          });
+        }
+        
+        injectedCount++;
+      }
+
+      await batch.commit();
+      return { success: true, count: injectedCount };
+    } catch (e) {
+      console.error("injectUnassignedMockupRetentionCustomers error:", e);
+      throw e;
+    }
   }
 };
 

@@ -41,7 +41,7 @@ import { leadService } from './services/leadService';
 // ─── Role-based menu config ───────────────────────────────────────────────────
 const ADMIN_MENU = [
   { key: 'dashboard',  label: 'แดชบอร์ด',            icon: LayoutDashboard },
-  { key: 'new-leads',  label: 'ลีดใหม่',              icon: PhoneCall },
+  { key: 'new-leads',  label: 'เบอร์ใหม่',              icon: PhoneCall },
   { key: 'follow-up',  label: 'ลูกค้ารอตัดสินใจ',     icon: UserPlus },
   { key: 'retention',  label: 'ลูกค้าประจำ',           icon: Repeat },
 ];
@@ -49,7 +49,7 @@ const ADMIN_MENU = [
 const MANAGER_MENU = [
   { key: 'dashboard',  label: 'แดชบอร์ดภาพรวม',      icon: LayoutDashboard },
   { key: 'master-pool',label: 'คลังเบอร์โทร',          icon: Database },
-  { key: 'new-leads',  label: 'รายชื่อลีดใหม่',        icon: PhoneCall },
+  { key: 'new-leads',  label: 'รายชื่อเบอร์ใหม่',        icon: PhoneCall },
   { key: 'follow-up',  label: 'ลูกค้ารอตัดสินใจ',      icon: UserPlus },
   { key: 'retention',  label: 'งานลูกค้าประจำ',        icon: Repeat },
   { key: 'assign',     label: 'มอบหมายงาน',            icon: UserCog },
@@ -66,7 +66,7 @@ const SETTINGS_SUBMENU = [
 const PAGE_TITLES = {
   dashboard:     'ภาพรวมการทำงาน',
   'master-pool': 'คลังเบอร์โทร',
-  'new-leads':   'ลีดใหม่',
+  'new-leads':   'เบอร์ใหม่',
   'follow-up':   'ลูกค้ารอตัดสินใจ',
   retention:     'ลูกค้าประจำ',
   performance:   'ประสิทธิผลงาน',
