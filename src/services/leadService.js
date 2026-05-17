@@ -1975,7 +1975,7 @@ export const leadService = {
 
         // Seed contact/order history logs for this customer
         const logId1 = `${p.phone}_init_order`;
-        batch.set(doc(db, ACTIVITY_LOGS_COL, logId1), {
+        batch.set(doc(db, LOGS_COL, logId1), {
           action: `สั่งซื้อครั้งแรกสำเร็จ ยอดซื้อเรียบร้อย`,
           type: 'sale',
           adminId: 'system',
@@ -1991,7 +1991,7 @@ export const leadService = {
         if (p.orders) {
           p.orders.forEach((order, ordIdx) => {
             const extraLogId = `${p.phone}_extra_${ordIdx}`;
-            batch.set(doc(db, ACTIVITY_LOGS_COL, extraLogId), {
+            batch.set(doc(db, LOGS_COL, extraLogId), {
               action: `ใบสั่งซื้อซ้ำ: ${order.note} วันที่สั่ง ${order.date}`,
               type: 'sale',
               adminId: 'system',
