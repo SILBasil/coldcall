@@ -492,7 +492,15 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
               <tr className="bg-slate-50/50 border-b border-slate-100">
                 <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic">No. / เลขที่ลูกค้า</th>
                 <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic">เบอร์โทรศัพท์ / QR Code</th>
-                <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic">สถานะ / ผู้รับผิดชอบ</th>
+                {type === 'retention' ? (
+                  <>
+                    <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic">ผู้รับผิดชอบ</th>
+                    <th className="px-6 py-4 text-center text-xs font-black text-slate-600 uppercase tracking-widest italic">ติดตามสัปดาห์นี้</th>
+                    <th className="px-6 py-4 text-center text-xs font-black text-slate-600 uppercase tracking-widest italic">สั่งซื้อสำเร็จ</th>
+                  </>
+                ) : (
+                  <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic">สถานะ / ผู้รับผิดชอบ</th>
+                )}
                 {type === 'retention' && isManager && (
                   <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic">ความรอบความถี่ (รอบออเดอร์)</th>
                 )}
@@ -564,24 +572,71 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
                            )}
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col gap-1.5">
-                           <span className={`w-fit px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest italic ${isCompleted ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-600'} shadow-sm border`}>
-                              {l.status || 'รอดำเนินการ'}
-                           </span>
-                           {l.responsibleName && l.responsibleName !== 'Unassigned' ? (
-                             <div className="flex items-center gap-1">
-                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 opacity-50" />
-                                <span className="text-[10px] font-black text-slate-600 uppercase italic">{l.responsibleName}</span>
-                             </div>
-                           ) : (
-                             <div className="flex items-center gap-1">
-                                <div className="w-1.5 h-1.5 rounded-full bg-slate-200" />
-                                <span className="text-[10px] text-slate-400 italic">Unassigned</span>
-                             </div>
-                           )}
-                        </div>
-                      </td>
+                      {type === 'retention' ? (
+                        <>
+                          {/* 1. ผู้รับผิดชอบ (Responsible Admin) */}
+                          <td className="px-6 py-4">
+                            {l.responsibleName && l.responsibleName !== 'Unassigned' ? (
+                              <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full bg-indigo-50 flex items-center justify-center border border-indigo-100 shadow-inner">
+                                  <span className="text-[10px] font-black text-indigo-600">
+                                    {l.responsibleName.substring(0, 2)}
+                                  </span>
+                                </div>
+                                <span className="text-xs font-black text-slate-700">{l.responsibleName}</span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full bg-slate-50 flex items-center justify-center border border-slate-200 shadow-inner">
+                                  <span className="text-[10px] font-black text-slate-400">-</span>
+                                </div>
+                                <span className="text-xs font-bold text-slate-400 italic">Unassigned</span>
+                              </div>
+                            )}
+                          </td>
+
+                          {/* 2. ติดตามสัปดาห์นี้ (Follow-up) */}
+                          <td className="px-6 py-4 text-center">
+                            {isCompleted ? (
+                              <span className="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 text-sm font-black shadow-sm transform hover:scale-110 transition-transform duration-300">
+                                ✅
+                              </span>
+                            ) : (
+                              <span className="text-slate-200">-</span>
+                            )}
+                          </td>
+
+                          {/* 3. สั่งซื้อสำเร็จ (Order) */}
+                          <td className="px-6 py-4 text-center">
+                            {l.status === '✅ สั่งซื้อแล้ว' ? (
+                              <span className="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 text-sm font-black shadow-sm transform hover:scale-110 transition-transform duration-300">
+                                ✅
+                              </span>
+                            ) : (
+                              <span className="text-slate-200">-</span>
+                            )}
+                          </td>
+                        </>
+                      ) : (
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col gap-1.5">
+                             <span className={`w-fit px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest italic ${isCompleted ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-600'} shadow-sm border`}>
+                                {l.status || 'รอดำเนินการ'}
+                             </span>
+                             {l.responsibleName && l.responsibleName !== 'Unassigned' ? (
+                               <div className="flex items-center gap-1">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 opacity-50" />
+                                  <span className="text-[10px] font-black text-slate-600 uppercase italic">{l.responsibleName}</span>
+                               </div>
+                             ) : (
+                               <div className="flex items-center gap-1">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-slate-200" />
+                                  <span className="text-[10px] text-slate-400 italic">Unassigned</span>
+                               </div>
+                             )}
+                          </div>
+                        </td>
+                      )}
                       {type === 'retention' && (
                         <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                            <div className="flex flex-col gap-1.5 w-36 bg-slate-50 p-2 rounded-xl border border-slate-100 shadow-inner">
