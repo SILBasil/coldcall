@@ -293,6 +293,7 @@ const DataPage = () => {
   const [mockStatus, setMockStatus] = useState({ pct: 0, msg: '' });
   const [evolutionStep, setEvolutionStep] = useState(0);
   const [evolving, setEvolving] = useState(false);
+  const [injecting, setInjecting] = useState(false);
 
   useEffect(() => {
     const fetchStep = async () => {
@@ -314,6 +315,21 @@ const DataPage = () => {
     }
   };
 
+  const handleInjectMockupLeads = async () => {
+    if (!window.confirm('ต้องการนำเข้ารายชื่อลูกค้าจำลองจำนวน 15 คนที่ยังไม่ได้มอบหมายงาน ใช่หรือไม่?')) return;
+    try {
+      setInjecting(true);
+      const res = await leadService.injectUnassignedMockupCustomers(15);
+      if (res.success) {
+        alert(`✅ นำเข้ารายชื่อลูกค้าจำลองจำนวน ${res.count} คนเสร็จเรียบร้อยแล้ว! สามารถไปที่เมนู 'มอบหมายงาน' เพื่อเลือกแอดมินผู้ดูแลได้ทันที`);
+      }
+    } catch (err) {
+      alert('❌ เกิดข้อผิดพลาด: ' + err.message);
+    } finally {
+      setInjecting(false);
+    }
+  };
+
   const handleSync = async () => {
     if (!window.confirm('ต้องการดึงข้อมูลจาก Google Sheet ใช่หรือไม่? อาจใช้เวลา 1-2 นาที')) return;
     try {
@@ -326,6 +342,7 @@ const DataPage = () => {
       alert('❌ เกิดข้อผิดพลาด: ' + err.message);
     } finally { setSyncing(false); }
   };
+
 
   const handleMockup = async () => {
     if (!window.confirm('ต้องการจำลองข้อมูลลูกค้าเก่าจำนวน 150 คนใช่หรือไม่?')) return;
@@ -438,7 +455,19 @@ const DataPage = () => {
         progress={mocking ? mockStatus : null}
       />
 
+      <ActionCard
+        icon={<Plus size={22} />}
+        title="นำเข้ารายชื่อลูกค้าจำลอง 15 ราย (Unassigned Mockup Leads)"
+        desc="นำเข้าข้อมูลลูกค้าใหม่ 15 รายที่จำลองโปรไฟล์ธุรกิจที่หลากหลายในประเทศไทย โดยไม่มีการระบุผู้ดูแล เพื่อให้ผู้จัดการ (Manager) ทดสอบระบบมอบหมายงานได้ทันที"
+        buttonLabel="✨ นำเข้ารายชื่อลูกค้าจำลอง 15 คน"
+        buttonColor="emerald"
+        onClick={handleInjectMockupLeads}
+        loading={injecting}
+        loadingLabel="กำลังนำเข้าข้อมูลลูกค้าจำลอง..."
+      />
+
       <div className="border-t border-slate-200 pt-6">
+
         <div className="flex items-center gap-2 mb-4">
           <AlertTriangle size={16} className="text-rose-500" />
           <span className="text-sm font-black text-rose-600 uppercase tracking-tight">Danger Zone</span>

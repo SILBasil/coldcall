@@ -1750,5 +1750,59 @@ export const leadService = {
     }
     
     return 0;
+  },
+
+  async injectUnassignedMockupCustomers(count = 15) {
+    try {
+      const mockProfiles = [
+        { name: "คุณสมเกียรติ ยิ่งยศ", businessType: "ร้านขายส่งสมเกียรติ พลาซ่า", phone: "0819234567", stage: "pool", status: "🆕 รายใหม่" },
+        { name: "ร้านเจ๊พร ค้าวัสดุก่อสร้าง", businessType: "ร้านจำหน่ายวัสดุก่อสร้างครบวงจร", phone: "0897654321", stage: "qualified", status: "สนใจ / ขอข้อมูลเพิ่มเติม" },
+        { name: "คุณอารีรัตน์ ตั้งใจ", businessType: "คลินิกสัตวแพทย์รักสัตว์", phone: "0823456789", stage: "pool", status: "🆕 รายใหม่" },
+        { name: "หจก. นำชัยอุตสาหกรรมพลาสติก", businessType: "โรงงานฉีดพลาสติกอุตสาหกรรม", phone: "0854321098", stage: "qualified", status: "สนใจ / ขอข้อมูลเพิ่มเติม" },
+        { name: "คุณวิชัย พานิช", businessType: "ร้านกาแฟดิโอโร่ คาเฟ่", phone: "0876543210", stage: "pool", status: "🆕 รายใหม่" },
+        { name: "คุณกิตติศักดิ์ เจริญกิจ", businessType: "สหกรณ์การเกษตรสามโคก", phone: "0834567890", stage: "qualified", status: "สนใจ / ขอข้อมูลเพิ่มเติม" },
+        { name: "ร้านเจ๊หมวย เป็ดพะโล้เยาวราช", businessType: "ร้านอาหารอาหารจีนและเป็ดพะโล้", phone: "0865432109", stage: "pool", status: "🆕 รายใหม่" },
+        { name: "คุณอรทัย นามดี", businessType: "บริษัท ทริปเปิ้ลเอช โลจิสติกส์ จำกัด", phone: "0845678901", stage: "qualified", status: "สนใจ / ขอข้อมูลเพิ่มเติม" },
+        { name: "ร้านประยูร ค้าไม้และเฟอร์นิเจอร์", businessType: "ร้านเฟอร์นิเจอร์ไม้แปรรูป", phone: "0887654321", stage: "pool", status: "🆕 รายใหม่" },
+        { name: "คุณสุชาดา โสภณ", businessType: "สถาบันสอนกวดวิชาปัญญาเลิศ", phone: "0801234567", stage: "qualified", status: "สนใจ / ขอข้อมูลเพิ่มเติม" },
+        { name: "บริษัท เอสพี ฟู้ด แอนด์ เบฟเวอเรจ จำกัด", businessType: "โรงงานผลิตน้ำดื่มและเครื่องดื่ม", phone: "0822345678", stage: "pool", status: "🆕 รายใหม่" },
+        { name: "คุณมนัส สุขขี", businessType: "อู่ซ่อมรถยนต์มนัสการช่าง", phone: "0899876543", stage: "qualified", status: "สนใจ / ขอข้อมูลเพิ่มเติม" },
+        { name: "ร้านสุนทรี เบเกอรี่แอนด์พาสทรี", businessType: "ร้านเบเกอรี่และของหวานโฮมเมด", phone: "0866543210", stage: "pool", status: "🆕 รายใหม่" },
+        { name: "คุณวิมล มิ่งขวัญ", businessType: "ฟาร์มกล้วยไม้สวนมิ่งขวัญ", phone: "0833210987", stage: "qualified", status: "สนใจ / ขอข้อมูลเพิ่มเติม" },
+        { name: "ร้านป้าแดง ชำของชำและโชห่วย", businessType: "ร้านขายของชำในชุมชน", phone: "0877890123", stage: "pool", status: "🆕 รายใหม่" }
+      ];
+
+      const batch = writeBatch(db);
+      let injectedCount = 0;
+
+      for (let i = 0; i < Math.min(count, mockProfiles.length); i++) {
+        const p = mockProfiles[i];
+        const docRef = doc(db, CUSTOMERS_COL, p.phone);
+        
+        batch.set(docRef, {
+          phone: p.phone,
+          name: p.name,
+          customerNo: `MC-${1000 + i}`,
+          businessType: p.businessType,
+          stage: p.stage,
+          status: p.status,
+          type: 'ยังไม่ระบุ',
+          source: 'Mockup Inject',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          responsibleId: null,
+          responsibleName: 'Unassigned',
+          stats: { callCount: 0 }
+        });
+        injectedCount++;
+      }
+
+      await batch.commit();
+      return { success: true, count: injectedCount };
+    } catch (e) {
+      console.error("injectUnassignedMockupCustomers error:", e);
+      throw e;
+    }
   }
 };
+
