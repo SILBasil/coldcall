@@ -24,6 +24,20 @@
   --color-slate-900: #0f172a;
   --color-slate-950: #020617;
 
+  /* Soft UI Border Radius Overrides - Rounder & Friendlier */
+  --radius-md: 0.75rem;     /* 12px */
+  --radius-lg: 1rem;        /* 16px */
+  --radius-xl: 1.5rem;      /* 24px */
+  --radius-2xl: 2rem;       /* 32px */
+  --radius-3xl: 2.5rem;     /* 40px */
+
+  /* Soft UI Blue-Tinted Shadow Overrides - High Premium feel */
+  --shadow-sm: 0 2px 12px rgba(14, 165, 233, 0.04);
+  --shadow-md: 0 4px 20px -2px rgba(14, 165, 233, 0.06), 0 2px 8px -1px rgba(0, 0, 0, 0.03);
+  --shadow-lg: 0 10px 30px -5px rgba(14, 165, 233, 0.08), 0 8px 20px -6px rgba(0, 0, 0, 0.03);
+  --shadow-xl: 0 20px 40px -10px rgba(14, 165, 233, 0.12), 0 10px 20px -5px rgba(0, 0, 0, 0.03);
+  --shadow-2xl: 0 25px 60px -15px rgba(14, 165, 233, 0.18);
+
 
 }
 
@@ -36,6 +50,10 @@
   
   body {
     @apply bg-slate-50 text-slate-900;
+  }
+
+  main {
+    scrollbar-gutter: stable;
   }
 
   /* Typography Refinements */

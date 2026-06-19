@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
   TrendingUp, PhoneCall, CheckCircle2, Target, Clock, Award, Users, 
-  ChevronRight, ChevronLeft, Calendar, RotateCw, Loader2, Database, TrendingDown 
+  ChevronRight, ChevronLeft, Calendar, RotateCw, Loader2, Database, TrendingDown,
+  UserPlus, Hourglass, Star
 } from 'lucide-react';
 import { leadService } from '../../services/leadService';
 import { downloadWeeklyHTML } from '../../utils/htmlExporter';
 import { DashboardSkeleton } from '../common/Skeleton';
+import { dialog } from '../../utils/dialog';
 
 // แดชบอร์ดสำหรับแอดมิน - แสดงผลงานรายสัปดาห์/เดือนและส่งรายงาน
 const AdminDashboardView = ({ adminId, onNextLead, onSelectCustomer }) => {
@@ -41,9 +43,9 @@ const AdminDashboardView = ({ adminId, onNextLead, onSelectCustomer }) => {
       const res = await leadService.submitWeeklyReport(admin.id, admin.name, weekStr, reportNote);
       if (res) {
           setReportNote('');
-          alert('ส่งรายงานสัปดาห์นี้เรียบร้อยแล้ว!');
+          await dialog.alert({ title: 'ส่งรายงานสำเร็จ', text: 'ส่งรายงานสัปดาห์นี้เรียบร้อยแล้ว!', icon: 'success' });
       } else {
-          alert('เกิดข้อผิดพลาดในการส่งรายงาน');
+          await dialog.alert({ title: 'ส่งรายงานล้มเหลว', text: 'เกิดข้อผิดพลาดในการส่งรายงาน', icon: 'error' });
       }
       setIsSubmitting(false);
   };
@@ -69,11 +71,11 @@ const AdminDashboardView = ({ adminId, onNextLead, onSelectCustomer }) => {
       if (reportData) {
          downloadWeeklyHTML(reportData);
       } else {
-         alert('เกิดข้อผิดพลาด ไม่สามารถดึงข้อมูลรายงานได้');
+         await dialog.alert({ title: 'เกิดข้อผิดพลาด', text: 'ไม่สามารถดึงข้อมูลรายงานได้', icon: 'error' });
       }
     } catch (err) {
       console.error(err);
-      alert('เกิดข้อผิดพลาดในการดาวน์โหลดข้อมูล');
+      await dialog.alert({ title: 'ดาวน์โหลดข้อมูลล้มเหลว', text: 'เกิดข้อผิดพลาดในการดาวน์โหลดข้อมูล', icon: 'error' });
     } finally {
       setIsExporting(false);
     }
@@ -357,157 +359,118 @@ const AdminDashboardView = ({ adminId, onNextLead, onSelectCustomer }) => {
          </div>
       </div>
 
-      {/* Main Workload Columns */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
-        {/* Left: New Leads */}
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden flex flex-col h-[650px] group/col">
-          <div className="p-7 bg-indigo-50/40 border-b border-indigo-100/50 relative shrink-0">
-            <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none group-hover/col:opacity-10 transition-opacity">
-              <Users size={100} className="text-indigo-600" />
-            </div>
-            <div className="relative z-10 flex items-center gap-4 mb-4">
-              <div className="p-3 bg-indigo-100 rounded-2xl text-indigo-600 shadow-sm"><Users size={28}/></div>
-              <div>
-                <h3 className="text-xl font-black text-slate-900 tracking-tighter uppercase">รายชื่อเบอร์ใหม่ / ลูกค้ารอตัดสินใจ</h3>
-                <p className="text-sm font-black text-indigo-600 uppercase tracking-widest italic">ช่วงงานประจำสัปดาห์ {dateRangeStr}</p>
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-4 gap-3 mt-6 relative z-10">
-              <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center">
-                <span className="text-2xl font-black text-slate-800">{workloadOverview?.newLeads?.assignedThisWeek || 0}</span>
-                <span className="text-[11px] font-bold text-slate-600 uppercase text-center leading-tight">งานมอบหมาย<br/>สัปดาห์นี้</span>
-              </div>
-              <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center">
-                 <span className="text-2xl font-black text-slate-800">{workloadOverview?.newLeads?.backlogCount || 0}</span>
-                <span className="text-[11px] font-bold text-rose-400 uppercase text-center leading-tight">งานค้างจาก<br/>สัปดาห์ก่อน</span>
-              </div>
-              <div className="bg-emerald-500 p-4 rounded-2xl shadow-sm border border-emerald-400 flex flex-col items-center justify-center text-white">
-                <span className="text-2xl font-black">{workloadOverview?.newLeads?.completed || 0}</span>
-                <span className="text-[11px] font-bold text-emerald-100 uppercase text-center leading-tight">ทำเสร็จแล้ว<br/>สัปดาห์นี้</span>
-              </div>
-              <div className="bg-indigo-600 p-4 rounded-2xl shadow-sm border border-indigo-500 flex flex-col items-center justify-center text-white">
-                <span className="text-2xl font-black">{workloadOverview?.newLeads?.totalInHand || 0}</span>
-                <span className="text-[11px] font-bold text-indigo-200 uppercase text-center leading-tight">งานคงเหลือ<br/>ทั้งหมด</span>
-              </div>
-            </div>
+      {/* Customer Stage Overview — 3 Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
 
-            <div className="flex justify-between items-center bg-indigo-600/5 p-4 rounded-2xl border border-indigo-100 mt-4 relative z-10">
-              <div className="flex flex-col">
-                <span className="text-[11px] font-black text-indigo-600 uppercase">เปลี่ยนเป็นลูกค้าประจำ</span>
-                <span className="text-xl font-black text-indigo-700">{summary?.outcomes?.conversions?.newToRetention || 0} ราย</span>
+        {/* Card 1: ลูกค้าใหม่ (Pool) */}
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden group hover:shadow-md transition-all">
+          <div className="h-1.5 bg-gradient-to-r from-indigo-400 to-indigo-600 rounded-t-3xl" />
+          <div className="p-7 flex flex-col gap-5">
+            <div className="flex items-center justify-between">
+              <div className="p-3 bg-indigo-50 rounded-2xl group-hover:scale-110 transition-transform">
+                <UserPlus size={26} className="text-indigo-600" />
               </div>
-              <div className="w-[1px] h-8 bg-indigo-200/50" />
-              <div className="flex flex-col items-end">
-                <span className="text-[11px] font-black text-slate-500 uppercase">เปลี่ยนเป็นลูกค้ารอตัดสินใจ</span>
-                <span className="text-xl font-black text-slate-700">{summary?.outcomes?.conversions?.newToFollowUp || 0} ราย</span>
+              <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest bg-indigo-50 px-3 py-1 rounded-full">POOL</span>
+            </div>
+            {/* ตัวเลขหลัก = ลูกค้าใหม่ทั้งหมด (backlog + สัปดาห์นี้) */}
+            <div>
+              <div className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-1">ลูกค้าใหม่ทั้งหมด</div>
+              <div className="text-6xl font-black text-indigo-600 tracking-tighter leading-none">
+                {workloadOverview?.pool?.totalInHand ?? '—'}
+              </div>
+              <div className="text-xs font-bold text-slate-400 mt-2 italic">ยอดรวม (ตกค้าง + มอบหมายสัปดาห์นี้)</div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-50">
+              <div className="flex flex-col bg-indigo-50/50 rounded-xl p-2.5">
+                <span className="text-[9px] font-black text-indigo-500 uppercase mb-1">มอบหมายสัปดาห์นี้</span>
+                <span className="text-xl font-black text-indigo-600">{workloadOverview?.pool?.assignedThisWeek ?? '—'}</span>
+              </div>
+              <div className="flex flex-col bg-rose-50/50 rounded-xl p-2.5">
+                <span className="text-[9px] font-black text-rose-400 uppercase mb-1">ตกค้างเดือนนี้</span>
+                <span className="text-xl font-black text-rose-500">{workloadOverview?.pool?.backlogCount ?? '—'}</span>
+              </div>
+              <div className="flex flex-col bg-emerald-50 rounded-xl p-2.5 border border-emerald-100">
+                <span className="text-[9px] font-black text-emerald-600 uppercase mb-1">ทำแล้วซื้อ (ปิดยอดสำเร็จ)</span>
+                <span className="text-xl font-black text-emerald-700">{workloadOverview?.pool?.completedWon ?? '—'} <span className="text-[10px] text-emerald-500">ราย</span></span>
+              </div>
+              <div className="flex flex-col bg-slate-50 rounded-xl p-2.5 border border-slate-100">
+                <span className="text-[9px] font-black text-slate-500 uppercase mb-1">ทำแล้วรอตัดสินใจ (ยังไม่ซื้อ)</span>
+                <span className="text-xl font-black text-slate-700">{workloadOverview?.pool?.completedNotWon ?? '—'} <span className="text-[10px] text-slate-400">ราย</span></span>
               </div>
             </div>
-          </div>
-          
-          <div className="p-5 overflow-y-auto flex-1 space-y-3 bg-slate-50/50">
-            {!workloadOverview?.newLeads?.list?.length ? (
-               <div className="h-full flex flex-col items-center justify-center text-slate-300 font-black text-sm uppercase italic opacity-70">ไม่มีรายชื่อลูกค้าที่ต้องจัดการ</div>
-            ) : (
-              workloadOverview.newLeads.list.map((c, i) => (
-                <button key={c.id ? `${c.id}-${i}` : i} onClick={() => onSelectCustomer ? onSelectCustomer(c) : onNextLead(c)} className={`w-full text-left p-4 rounded-2xl border transition-all flex items-center justify-between group cursor-pointer ${c.isDone ? 'bg-white/50 border-transparent opacity-60' : 'bg-white border-slate-100 hover:border-indigo-400 hover:shadow-lg hover:-translate-y-0.5 shadow-sm'}`}>
-                   <div className="flex items-center gap-4">
-                     <div className={`w-10 h-10 flex items-center justify-center rounded-xl text-sm font-black shrink-0 ${c.isDone ? 'bg-slate-100 text-slate-400' : 'bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm'}`}>
-                       {i + 1}
-                     </div>
-                     <div className="overflow-hidden min-w-0">
-                       <div className={`text-base font-bold truncate ${c.isDone ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{c?.name || 'ลูกค้าไม่มีชื่อ'}</div>
-                       <div className="flex gap-3 items-center mt-1">
-                          <span className="text-xs font-bold text-slate-600 tracking-wide">{c.phone}</span>
-                          {!c.isDone && c.isNewThisWeek && <span className="text-[10px] px-2 py-0.5 bg-blue-100 text-blue-600 font-black rounded uppercase">ใหม่</span>}
-                          {!c.isDone && !c.isNewThisWeek && <span className="text-[10px] px-2 py-0.5 bg-rose-100 text-rose-600 font-black rounded uppercase">ค้าง</span>}
-                          {c.isDone && <span className="text-[10px] px-2 py-0.5 bg-emerald-100 text-emerald-600 font-black rounded uppercase italic">Done</span>}
-                       </div>
-                     </div>
-                   </div>
-                   <div className={`p-2.5 rounded-xl transition-all ${c.isDone ? 'text-slate-300' : 'bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white'}`}>
-                     <ChevronRight size={22} />
-                   </div>
-                </button>
-              ))
-            )}
           </div>
         </div>
 
-        {/* Right: Retention */}
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden flex flex-col h-[650px] group/col-ret">
-          <div className="p-7 bg-sky-50/40 border-b border-sky-100/50 relative shrink-0">
-            <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none group-hover/col-ret:opacity-10 transition-opacity">
-              <Clock size={100} className="text-sky-600" />
+        {/* Card 2: ลูกค้ารอตัดสินใจ (Qualified) */}
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden group hover:shadow-md transition-all">
+          <div className="h-1.5 bg-gradient-to-r from-amber-400 to-orange-500 rounded-t-3xl" />
+          <div className="p-7 flex flex-col gap-5">
+            <div className="flex items-center justify-between">
+              <div className="p-3 bg-amber-50 rounded-2xl group-hover:scale-110 transition-transform">
+                <Hourglass size={26} className="text-amber-500" />
+              </div>
+              <span className="text-[10px] font-black text-amber-400 uppercase tracking-widest bg-amber-50 px-3 py-1 rounded-full">QUALIFIED</span>
             </div>
-            <div className="relative z-10 flex items-center gap-4 mb-4">
-              <div className="p-3 bg-sky-100 rounded-2xl text-sky-600 shadow-sm"><Clock size={28}/></div>
-              <div>
-                <h3 className="text-xl font-black text-slate-900 tracking-tighter uppercase">งานลูกค้าประจำ (Retention)</h3>
-                <p className="text-sm font-black text-sky-600 uppercase tracking-widest italic">รอบติดต่อประจำสัปดาห์ {dateRangeStr}</p>
+            {/* ตัวเลขหลัก = ยอดรวม qualified ทั้งหมด */}
+            <div>
+              <div className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-1">ลูกค้ารอตัดสินใจทั้งหมด</div>
+              <div className="text-6xl font-black text-amber-500 tracking-tighter leading-none">
+                {workloadOverview?.qualified?.totalInHand ?? '—'}
+              </div>
+              <div className="text-xs font-bold text-slate-400 mt-2 italic">ติดต่อแล้ว อยู่ระหว่างพิจารณา</div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-50">
+              <div className="flex flex-col bg-amber-50/50 rounded-xl p-2.5">
+                <span className="text-[9px] font-black text-amber-500 uppercase mb-1">มอบหมาย / ย้ายมาสัปดาห์นี้</span>
+                <span className="text-xl font-black text-amber-600">{workloadOverview?.qualified?.assignedThisWeek ?? '—'}</span>
+              </div>
+              <div className="flex flex-col bg-rose-50/50 rounded-xl p-2.5">
+                <span className="text-[9px] font-black text-rose-400 uppercase mb-1">ตกค้างเดือนนี้</span>
+                <span className="text-xl font-black text-rose-500">{workloadOverview?.qualified?.backlogCount ?? '—'}</span>
+              </div>
+              <div className="flex flex-col bg-emerald-50 rounded-xl p-2.5 border border-emerald-100">
+                <span className="text-[9px] font-black text-emerald-600 uppercase mb-1">ทำแล้วซื้อ (ปิดยอดสำเร็จ)</span>
+                <span className="text-xl font-black text-emerald-700">{workloadOverview?.qualified?.completedWon ?? '—'} <span className="text-[10px] text-emerald-500">ราย</span></span>
+              </div>
+              <div className="flex flex-col bg-slate-50 rounded-xl p-2.5 border border-slate-100">
+                <span className="text-[9px] font-black text-slate-500 uppercase mb-1">ทำแล้วติดตามต่อ (ยังไม่ซื้อ)</span>
+                <span className="text-xl font-black text-slate-700">{workloadOverview?.qualified?.completedNotWon ?? '—'} <span className="text-[10px] text-slate-400">ราย</span></span>
               </div>
             </div>
-            
-            <div className="grid grid-cols-4 gap-3 mt-6 relative z-10">
-              <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center">
-                <span className="text-2xl font-black text-slate-800">{workloadOverview?.retention?.assignedThisWeek || 0}</span>
-                <span className="text-[11px] font-bold text-slate-400 uppercase text-center leading-tight">รอบใหม่<br/>สัปดาห์นี้</span>
-              </div>
-              <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center">
-                 <span className="text-2xl font-black text-slate-800">{workloadOverview?.retention?.backlogCount || 0}</span>
-                <span className="text-[11px] font-bold text-rose-400 uppercase text-center leading-tight">งานค้างจาก<br/>สัปดาห์ก่อน</span>
-              </div>
-              <div className="bg-emerald-500 p-4 rounded-2xl shadow-sm border border-emerald-400 flex flex-col items-center justify-center text-white">
-                <span className="text-2xl font-black">{workloadOverview?.retention?.completed || 0}</span>
-                <span className="text-[11px] font-bold text-emerald-100 uppercase text-center leading-tight">ทำเสร็จแล้ว<br/>สัปดาห์นี้</span>
-              </div>
-              <div className="bg-sky-600 p-4 rounded-2xl shadow-sm border border-sky-500 flex flex-col items-center justify-center text-white">
-                <span className="text-2xl font-black">{workloadOverview?.retention?.totalInHand || 0}</span>
-                <span className="text-[11px] font-bold text-sky-100 uppercase text-center leading-tight">งานคงเหลือ<br/>ทั้งหมด</span>
-              </div>
-            </div>
-          </div>
-          
-          <div className="p-5 overflow-y-auto flex-1 space-y-3 bg-slate-50/50">
-            {!workloadOverview?.retention?.list?.length ? (
-               <div className="h-full flex flex-col items-center justify-center text-slate-300 font-black text-sm uppercase italic opacity-70">ไม่มีรายชื่อลูกค้าถึงรอบติดต่อ</div>
-            ) : (
-              workloadOverview.retention.list.map((c, i) => (
-                <button key={c.id ? `${c.id}-${i}` : i} onClick={() => onSelectCustomer ? onSelectCustomer(c) : onNextLead(c)} className={`w-full text-left p-4 rounded-2xl border transition-all flex items-center justify-between group cursor-pointer ${c.isDone ? 'bg-white/50 border-transparent opacity-60' : 'bg-white border-slate-100 hover:border-sky-400 hover:shadow-lg hover:-translate-y-0.5 shadow-sm'}`}>
-                   <div className="flex items-center gap-4">
-                     <div className={`w-10 h-10 flex items-center justify-center rounded-xl text-sm font-black shrink-0 ${c.isDone ? 'bg-slate-100 text-slate-400' : 'bg-sky-50 text-sky-600 group-hover:bg-sky-600 group-hover:text-white transition-all shadow-sm'}`}>
-                       {i + 1}
-                     </div>
-                     <div className="overflow-hidden min-w-0">
-                       <div className={`text-base font-bold truncate ${c.isDone ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{c.name || 'ลูกค้าไม่มีชื่อ'}</div>
-                       <div className="flex gap-3 items-center mt-1">
-                          <span className="text-xs font-bold text-slate-600 tracking-wide">{c.phone}</span>
-                          {c.followUpFrequencyDays && (
-                              <span className={`text-[10px] px-2 py-0.5 font-extrabold rounded uppercase flex items-center gap-1 ${c.followUpFrequencyDays === 7 ? 'bg-amber-100 text-amber-600' : 'bg-purple-100 text-purple-600'}`}>
-                                 <RotateCw size={10} /> รอบทุก {c.followUpFrequencyDays} วัน
-                              </span>
-                          )}
-                          {c.nextDueDate && (
-                              <span className="text-[10px] px-2 py-0.5 bg-slate-100 text-slate-600 font-black rounded uppercase shadow-sm border border-slate-200">
-                                 รอบ: {new Date(c.nextDueDate).toLocaleDateString('th-TH', {day: 'numeric', month: 'short'})}
-                              </span>
-                          )}
-                          {!c.isDone && c.isNewThisWeek && <span className="text-[10px] px-2 py-0.5 bg-sky-100 text-sky-600 font-black rounded uppercase shadow-sm">สัปดาห์นี้</span>}
-                          {!c.isDone && !c.isNewThisWeek && <span className="text-[10px] px-2 py-0.5 bg-rose-100 text-rose-600 font-black rounded uppercase shadow-sm">ค้าง</span>}
-                          {c.isDone && <span className="text-[10px] px-2 py-0.5 bg-emerald-100 text-emerald-600 font-black rounded uppercase italic shadow-sm">เรียบร้อย</span>}
-                       </div>
-                     </div>
-                   </div>
-                   <div className={`p-2.5 rounded-xl transition-all ${c.isDone ? 'text-slate-300' : 'bg-sky-50 text-sky-600 group-hover:bg-sky-600 group-hover:text-white'}`}>
-                     <ChevronRight size={22} />
-                   </div>
-                </button>
-              ))
-            )}
           </div>
         </div>
+
+        {/* Card 3: ลูกค้าประจำ (Retention) */}
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden group hover:shadow-md transition-all">
+          <div className="h-1.5 bg-gradient-to-r from-emerald-400 to-teal-500 rounded-t-3xl" />
+          <div className="p-7 flex flex-col gap-5">
+            <div className="flex items-center justify-between">
+              <div className="p-3 bg-emerald-50 rounded-2xl group-hover:scale-110 transition-transform">
+                <Star size={26} className="text-emerald-600" />
+              </div>
+              <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-50 px-3 py-1 rounded-full">RETENTION</span>
+            </div>
+            {/* ตัวเลขหลัก = ลูกค้าประจำทั้งหมดของ admin คนนี้ (all-time) */}
+            <div>
+              <div className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-1">ลูกค้าประจำของฉัน</div>
+              <div className="text-6xl font-black text-emerald-600 tracking-tighter leading-none">
+                {workloadOverview?.retention?.customerTotal ?? '—'}
+              </div>
+              <div className="text-xs font-bold text-slate-400 mt-2 italic">ลูกค้าที่ซื้อแล้วทั้งหมดในพอร์ต</div>
+            </div>
+            {/* sub stat เดียว: ติดตามไปแล้วสัปดาห์นี้ */}
+            <div className="pt-2 border-t border-slate-50">
+              <div className="flex flex-col bg-emerald-50/70 rounded-xl p-3">
+                <span className="text-[9px] font-black text-emerald-600 uppercase mb-1">ติดตามไปแล้วสัปดาห์นี้</span>
+                <span className="text-3xl font-black text-emerald-700">{workloadOverview?.retention?.completed ?? '—'}</span>
+                <span className="text-[10px] text-emerald-500 mt-1">ราย (ไม่ว่าจะซื้อซ้ำหรือยัง)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
+
 
       {/* Footer / Summary Charts Area */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

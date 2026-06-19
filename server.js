@@ -27,6 +27,29 @@ const pool = mysql.createPool(dbConfig);
 
 async function initDB() {
   try {
+      await pool.query(`
+         CREATE TABLE IF NOT EXISTS coldcall_customers (
+             id VARCHAR(255) PRIMARY KEY,
+             customerNo INT,
+             name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+             phone VARCHAR(50),
+             additionalPhones JSON,
+             stage VARCHAR(50),
+             status VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+             source VARCHAR(50),
+             responsibleId VARCHAR(255),
+             bot_ratingText VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+             bot_score INT,
+             q1_business TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+             q2_usage TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+             q3_sample TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+             q4_visit TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+             q5_prefTime TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+             q6_addLine TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+             created_at DATETIME,
+             updated_at DATETIME
+         );
+      `);
      await pool.query(`
         CREATE TABLE IF NOT EXISTS coldcall_logs (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -112,14 +135,12 @@ app.post('/api/setup/seed', async (req, res) => {
         
         const rand = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
         const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-        const provinces = ["กรุงเทพฯ","นนทบุรี","ปทุมธานี","สมุทรปราการ","สมุทรสาคร","ชลบุรี","ระยอง","จันทบุรี","ตราด","สระแก้ว","เชียงใหม่","เชียงราย","ลำปาง","ภูเก็ต","สุราษฎร์ธานี","กระบี่","ขอนแก่น","อุดรธานี","นครราชสีมา","บุรีรัมย์","อุบลราชธานี","พิษณุโลก","นครสวรรค์","อยุธยา","ราชบุรี","เพชรบุรี"];
         const bizNames = ["ก้าวหน้า","รุ่งเรือง","มั่งคั่ง","ทวีโชค","ไทยเจริญ","สยาม","สมบูรณ์","โชคชัย","มณีรัตน์","พรประเสริฐ","วิวัฒน์","เจริญทรัพย์","ภูมิใจ","นวัตกรรม","ทองดี","สุขใจ","เพชรทอง","เอกชัย","ศิริมงคล","อนันต์"];
         const bizTypes = ["พลาสติก","วิศวกรรม","เคหะภัณฑ์","การไฟฟ้า","โลหะการ","ก่อสร้าง","เอ็นจิเนียริ่ง","เทรดดิ้ง","ซัพพลาย","อุตสาหกรรม","ออโตเมชั่น","เซอร์วิส","กรุ๊ป","อินเตอร์","โฮลดิ้ง"];
         const outcomes = ["ลูกค้าไม่รับสาย","คุยข้อมูลเบื้องต้น","ขอใบเสนอราคา","ส่งแคตตาล็อกแล้ว","นัดคุยเพิ่ม"];
         
         // Get existing admins
         const [admins] = await pool.query("SELECT id, name FROM coldcall_users WHERE role = 'admin'");
-        const [mgr] = await pool.query("SELECT id, name FROM coldcall_users WHERE role = 'manager'");
         
         // 1. Create 300 Customers
         console.log('  Adding 300 Customers...');
@@ -128,14 +149,15 @@ app.post('/api/setup/seed', async (req, res) => {
             const admin = stage === 'pool' ? null : pick(admins);
             const name = stage === 'pool' ? '' : `${pick(["บจก.", "หจก.", "ร้าน"])} ${pick(bizNames)} ${pick(bizTypes)}`;
             const phone = `0${rand(6, 9)}${rand(10000000, 99999999)}`;
+            const docId = `pool_${phone}`;
             
             await pool.query(`
-                INSERT INTO coldcall_customers (name, phone, stage, location, responsibleId, responsibleName, status, createdAt, updatedAt)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                INSERT INTO coldcall_customers (id, name, phone, stage, responsibleId, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
             `, [
-                name, phone, stage, pick(provinces), 
-                admin?.id || null, admin?.name || 'Unassigned',
-                stage === 'customer' ? '✅ สั่งซื้อแล้ว' : (stage === 'qualified' ? '⏳ รอการตัดสินใจ' : '🆕 เบอร์ใหม่')
+                docId, name, phone, stage, 
+                admin?.id || null,
+                stage === 'customer' ? '✅ ปิดดีลสำเร็จ (Closed Won)' : (stage === 'qualified' ? '⏳ รอการตัดสินใจ (Pending)' : '🆕 รอดำเนินการ')
             ]);
         }
 
@@ -199,8 +221,8 @@ app.get('/api/customers', async (req, res) => {
         }
 
         if (phone) {
-            query += ' AND (phone LIKE ? OR additionalPhones LIKE ?)';
-            countQuery += ' AND (phone LIKE ? OR additionalPhones LIKE ?)';
+            query += ' AND (phone LIKE ? OR CAST(additionalPhones AS CHAR) LIKE ?)';
+            countQuery += ' AND (phone LIKE ? OR CAST(additionalPhones AS CHAR) LIKE ?)';
             const searchPattern = `%${phone}%`;
             params.push(searchPattern, searchPattern);
             countParams.push(searchPattern, searchPattern);
@@ -279,7 +301,7 @@ app.get('/api/customers/stats', async (req, res) => {
             FROM coldcall_logs l
             JOIN coldcall_users u ON l.adminId = u.id
             WHERE l.timestamp >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-            AND u.role = 'admin'
+            ${adminId ? 'AND l.adminId = ?' : ''}
         `);
 
         const adminMap = {};

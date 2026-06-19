@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { leadService } from '../../services/leadService';
 import { TableSkeleton } from '../common/Skeleton';
+import CustomSelect from '../common/CustomSelect';
 
 const statusConfig = {
   save: { label: 'บันทึกข้อมูล', category: 'PROD', color: 'text-indigo-600', bg: 'bg-indigo-50', icon: Save },
@@ -111,17 +112,16 @@ const AdminActivityView = ({ onSelectCustomer, role }) => {
 
           <div className="space-y-2">
             <label className="text-[11px] font-black text-slate-800 uppercase tracking-[0.2em] pl-1">เลือกเจ้าหน้าที่/แอดมิน</label>
-            <div className="relative group">
-              <select 
-                value={filterAdmin}
-                onChange={(e) => setFilterAdmin(e.target.value)}
-                className="w-full appearance-none pl-4 pr-10 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-[11px] font-black outline-none cursor-pointer focus:ring-4 focus:ring-primary/5 focus:border-primary/20 transition-all shadow-inner"
-              >
-                <option value="all">แสดงแอดมินทั้งหมด</option>
-                {admins.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-              </select>
-              <ChevronDown size={12} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600 pointer-events-none group-focus-within:rotate-180 transition-transform" />
-            </div>
+            <CustomSelect 
+              value={filterAdmin}
+              onChange={(e) => setFilterAdmin(e.target.value)}
+              className="w-full pl-4 pr-10 py-2.5 text-[11px]"
+              placeholder="แสดงแอดมินทั้งหมด"
+              options={[
+                { value: 'all', label: 'แสดงแอดมินทั้งหมด' },
+                ...admins.map(a => ({ value: a.id, label: a.name }))
+              ]}
+            />
           </div>
 
           {/* Activity Type Groups */}

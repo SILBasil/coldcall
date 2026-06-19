@@ -1,47 +1,251 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Users, AlertCircle, Loader2, PhoneCall, QrCode, X, MessageSquare, Star, Info, ChevronLeft, ChevronRight, Plus, Calendar, Clock, Edit2 } from 'lucide-react';
+import { Search, Users, AlertCircle, Loader2, PhoneCall, QrCode, X, MessageSquare, Star, Info, ChevronLeft, ChevronRight, Plus, Calendar, Clock, Edit2, RotateCcw, FileSpreadsheet, Upload, FileDown, CheckCircle2, AlertTriangle, Trash2, CheckSquare, Square, Filter } from 'lucide-react';
 import { ADMINS, MONTHS_TRACKING } from '../../constants';
 import { leadService } from '../../services/leadService';
 import RetentionTableView from './RetentionTableView';
 import QRCodeModal from '../common/QRCodeModal';
 import { TableSkeleton } from '../common/Skeleton';
+import CustomSelect from '../common/CustomSelect';
+import EditCustomerModal from '../common/EditCustomerModal';
+import { dialog } from '../../utils/dialog';
 
-const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role, showToast, onCall }) => {
+const getLocalDateString = (dateInput) => {
+  let date = dateInput;
+  if (!date) date = new Date();
+  if (!(date instanceof Date) || isNaN(date.getTime())) {
+    date = new Date(dateInput);
+  }
+  if (isNaN(date.getTime())) {
+    return '';
+  }
+  const tzOffset = date.getTimezoneOffset() * 60000;
+  return (new Date(date.getTime() - tzOffset)).toISOString().split('T')[0];
+};
+
+const formatLastActionDate = (customer) => {
+  if (customer.lastActionDate) {
+    const parts = customer.lastActionDate.split('-');
+    if (parts.length === 3) {
+      const y = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      const d = parseInt(parts[2], 10);
+      return `${d}/${m}/${y + 543}`;
+    }
+  }
+  if (customer.lastCallDate) {
+    const dateStr = customer.lastCallDate;
+    if (dateStr.includes('/')) {
+      const parts = dateStr.split('/');
+      if (parts.length === 3) {
+        const d = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        let y = parseInt(parts[2], 10);
+        if (y < 2400) y += 543;
+        return `${d}/${m}/${y}`;
+      }
+    }
+    return dateStr;
+  }
+  return 'ยังไม่มีการติดต่อ';
+};
+
+const parseAnyDate = (dateInput) => {
+  if (!dateInput) return null;
+  if (dateInput instanceof Date) return dateInput;
+  
+  const str = String(dateInput).trim();
+  
+  // Try YYYY-MM-DD
+  if (str.includes('-')) {
+    const parts = str.split('-');
+    if (parts.length === 3) {
+      const y = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10) - 1;
+      const d = parseInt(parts[2], 10);
+      if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+        return new Date(y, m, d);
+      }
+    }
+  }
+  
+  // Try D/M/YYYY (Thai Buddhist)
+  if (str.includes('/')) {
+    const parts = str.split('/');
+    if (parts.length === 3) {
+      const d = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10) - 1;
+      let y = parseInt(parts[2], 10);
+      if (y > 2400) y -= 543;
+      if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
+        return new Date(y, m, d);
+      }
+    }
+  }
+  
+  const parsed = new Date(dateInput);
+  if (!isNaN(parsed.getTime())) {
+    return parsed;
+  }
+  return null;
+};
+
+const getStartOfWeek = (date) => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay(); // 0 is Sunday, 1 is Monday, etc.
+  const diff = d.getDate() - (day === 0 ? 6 : day - 1);
+  d.setDate(diff);
+  return d;
+};
+
+const getWeeksBetween = (dateA, dateB) => {
+  const startA = getStartOfWeek(dateA);
+  const startB = getStartOfWeek(dateB);
+  const msDiff = startB.getTime() - startA.getTime();
+  const weeks = Math.round(msDiff / (7 * 24 * 60 * 60 * 1000));
+  return weeks;
+};
+
+const getFrequencyInWeeks = (amount, unit) => {
+  const amt = parseInt(amount) || 1;
+  if (unit === 'เดือน') {
+    return amt * 4;
+  }
+  return amt; // default is 'สัปดาห์'
+};
+
+const getIsFollowedUpChecked = (customer, todayDate) => {
+  if (customer.gridData && todayDate) {
+    const curMonth = MONTHS_TRACKING[todayDate.getMonth()];
+    const day = todayDate.getDate();
+    const curWeek = day <= 7 ? 1 : day <= 14 ? 2 : day <= 21 ? 3 : 4;
+    const fWeekKey = `${curMonth}-${curWeek}-followup`;
+    if (customer.gridData[fWeekKey] !== undefined) {
+      return customer.gridData[fWeekKey] === true;
+    }
+  }
+
+  const actionDate = parseAnyDate(customer.lastActionDate) || parseAnyDate(customer.lastCallDate);
+  if (!actionDate) return false;
+  
+  const freq = getFrequencyInWeeks(customer.freqAmount, customer.freqUnit);
+  const elapsedWeeks = getWeeksBetween(actionDate, todayDate);
+  
+  return elapsedWeeks >= 0 && elapsedWeeks < freq;
+};
+
+const getIsOrderChecked = (customer, todayDate) => {
+  if (customer.gridData && todayDate) {
+    const curMonth = MONTHS_TRACKING[todayDate.getMonth()];
+    const day = todayDate.getDate();
+    const curWeek = day <= 7 ? 1 : day <= 14 ? 2 : day <= 21 ? 3 : 4;
+    const oWeekKey = `${curMonth}-${curWeek}-order`;
+    if (customer.gridData[oWeekKey] !== undefined) {
+      return customer.gridData[oWeekKey] === true;
+    }
+  }
+
+  const status = customer.status || '';
+  const isWon = status.includes('สั่งซื้อ') || 
+                status.includes('ปิดดีลสำเร็จ') || 
+                status.includes('Closed Won');
+  if (!isWon) return false;
+  
+  const orderDate = parseAnyDate(customer.lastOrderDate) || 
+                    parseAnyDate(customer.lastActionDate) || 
+                    parseAnyDate(customer.lastCallDate);
+  if (!orderDate) return false;
+  
+  const freq = getFrequencyInWeeks(customer.freqAmount, customer.freqUnit);
+  const elapsedWeeks = getWeeksBetween(orderDate, todayDate);
+  
+  return elapsedWeeks >= 0 && elapsedWeeks < freq;
+};
+
+
+
+const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdminId, currentAdminName, role, showToast, onCall }) => {
   const isManager = role === 'manager';
   const [qrModal, setQrModal] = useState({ open: false, phone: '', name: '' });
   const [isAdding, setIsAdding] = useState(false);
   const [drawerData, setDrawerData] = useState(null);
   const [leads, setLeads] = useState([]);
+  const [selected, setSelected] = useState([]);
+  const [selectedCustomerForEdit, setSelectedCustomerForEdit] = useState(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [pagination, setPagination] = useState({ total: 0, count: 0, hasMore: false });
   const [cursorHistory, setCursorHistory] = useState([null]); // [0, Page1LastDoc, Page2LastDoc, ...]
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(() => type === 'retention' ? (parseInt(sessionStorage.getItem('retention_currentPage')) || 1) : 1);
   const [admins, setAdmins] = useState([]);
   const [assignedThisWeekIds, setAssignedThisWeekIds] = useState(new Set());
   const [completedThisWeekIds, setCompletedThisWeekIds] = useState(new Set());
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState(type === 'master-pool' ? 'all' : (type === 'retention' ? 'all' : 'todo'));
+  const [searchTerm, setSearchTerm] = useState(() => type === 'retention' ? (sessionStorage.getItem('retention_searchTerm') || '') : '');
+  const [debouncedSearch, setDebouncedSearch] = useState(() => type === 'retention' ? (sessionStorage.getItem('retention_searchTerm') || '') : '');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterActionDate, setFilterActionDate] = useState('all'); // 'all', 'today', 'not_today'
+  const [retentionSubTab, setRetentionSubTab] = useState(() => type === 'retention' ? (sessionStorage.getItem('retention_retentionSubTab') || 'all') : 'all');
   
   // Retention Manual Dropdowns
-  const [filterFreqAmt, setFilterFreqAmt] = useState(''); // '', '1', '2', '3'
-  const [filterFreqUnit, setFilterFreqUnit] = useState(''); // '', 'สัปดาห์', 'เดือน'
-  const [filterTrackStatus, setFilterTrackStatus] = useState(''); // '', 'tracked', 'not_tracked'
-  const [filterOrderStatus, setFilterOrderStatus] = useState(''); // '', 'bought', 'not_bought'
+  const [filterFreqAmt, setFilterFreqAmt] = useState(() => type === 'retention' ? (sessionStorage.getItem('retention_filterFreqAmt') || '') : '');
+  const [filterFreqUnit, setFilterFreqUnit] = useState(() => type === 'retention' ? (sessionStorage.getItem('retention_filterFreqUnit') || '') : '');
+  const [filterTrackStatus, setFilterTrackStatus] = useState(() => type === 'retention' ? (sessionStorage.getItem('retention_filterTrackStatus') || '') : '');
+  const [filterOrderStatus, setFilterOrderStatus] = useState(() => type === 'retention' ? (sessionStorage.getItem('retention_filterOrderStatus') || '') : '');
 
   // Time Machine for Retention testing
-  const [mockTodayStr, setMockTodayStr] = useState(new Date().toISOString().split('T')[0]);
+  const [mockTodayStr, setMockTodayStr] = useState(() => {
+    return localStorage.getItem('mockTodayStr') || new Date().toISOString().split('T')[0];
+  });
   const mockToday = new Date(mockTodayStr);
 
   useEffect(() => {
-    setFilterStatus(type === 'master-pool' ? 'all' : (type === 'retention' ? 'all' : 'todo'));
-    setCurrentPage(1); 
-    setCursorHistory([null]); 
-    setSearchTerm('');
-    setDebouncedSearch('');
-    setLeads([]);          // Clear stale data immediately
-    setLoading(true);      // Show loading state right away
+    localStorage.setItem('mockTodayStr', mockTodayStr);
+  }, [mockTodayStr]);
+
+  // CSV Import States
+  const [importStep, setImportStep] = useState('idle'); // 'idle', 'reading', 'parsed', 'uploading', 'complete'
+  const [importProgress, setImportProgress] = useState(0);
+  const [importStatusMsg, setImportStatusMsg] = useState('');
+  const [parsedData, setParsedData] = useState({ valid: [], duplicates: [], invalid: [] });
+  const [importSummary, setImportSummary] = useState({ success: 0, duplicate: 0, invalid: 0, failed: 0, total: 0 });
+
+  useEffect(() => {
+    if (type === 'retention') {
+      setFilterStatus('all');
+      setFilterActionDate('all');
+      setLeads([]);
+      setSelected([]);
+      setLoading(true);
+    } else {
+      setFilterStatus('all');
+      setFilterActionDate('all');
+      setRetentionSubTab('all');
+      setCurrentPage(1); 
+      setCursorHistory([null]); 
+      setSearchTerm('');
+      setDebouncedSearch('');
+      setFilterFreqAmt('');
+      setFilterFreqUnit('');
+      setFilterTrackStatus('');
+      setFilterOrderStatus('');
+      setLeads([]);          // Clear stale data immediately
+      setSelected([]);       // Clear selected items
+      setLoading(true);      // Show loading state right away
+    }
   }, [type, currentAdminId, activeTab]);
+
+  // Persist retention filters in sessionStorage
+  useEffect(() => {
+    if (type === 'retention') {
+      sessionStorage.setItem('retention_retentionSubTab', retentionSubTab);
+      sessionStorage.setItem('retention_searchTerm', searchTerm);
+      sessionStorage.setItem('retention_currentPage', currentPage);
+      sessionStorage.setItem('retention_filterFreqAmt', filterFreqAmt);
+      sessionStorage.setItem('retention_filterFreqUnit', filterFreqUnit);
+      sessionStorage.setItem('retention_filterTrackStatus', filterTrackStatus);
+      sessionStorage.setItem('retention_filterOrderStatus', filterOrderStatus);
+    }
+  }, [type, retentionSubTab, searchTerm, currentPage, filterFreqAmt, filterFreqUnit, filterTrackStatus, filterOrderStatus]);
 
   useEffect(() => {
     if (type === 'retention') {
@@ -63,7 +267,7 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
   const fetchLeads = async () => {
     setLoading(true);
     try {
-      const stage = type === 'follow-up' ? 'qualified' : ((type === 'master-pool' || type === 'new-leads') ? 'pool' : 'customer');
+      const stage = type === 'master-pool' ? 'all' : (type === 'follow-up' ? 'qualified' : ((type === 'new-leads') ? 'pool' : 'customer'));
       const currentCursor = cursorHistory[currentPage - 1];
 
       let res;
@@ -72,7 +276,9 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
          const adminFiltered = activeTab === 'my' && currentAdminId 
             ? searchData.filter(d => d.responsibleId === currentAdminId) 
             : searchData;
-         let finalData = adminFiltered.filter(d => d.stage === stage);
+         let finalData = stage === 'all' 
+            ? adminFiltered 
+            : adminFiltered.filter(d => d.stage === stage);
          if (type === 'new-leads') {
             finalData = finalData.filter(d => d.status === '🆕 รอดำเนินการ');
          }
@@ -88,7 +294,9 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
       }
 
       if (res && res.data) {
-        setLeads(res.data);
+        // Filter out soft deleted items
+        const nonDeleted = res.data.filter(l => l.stage !== 'trash');
+        setLeads(nonDeleted);
         setPagination(res.pagination);
         if (res.lastDoc && cursorHistory.length === currentPage && debouncedSearch.length < 2) {
           setCursorHistory([...cursorHistory, res.lastDoc]);
@@ -106,6 +314,407 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
     }
   };
 
+  const handleDownloadTemplate = () => {
+    const headers = ['ชื่อลูกค้า', 'เบอร์โทรศัพท์', 'ประเภทธุรกิจ'];
+    const sampleRow = ['บริษัท รวยทรัพย์ขนส่ง จำกัด', '1234567890', 'ร้านค้าปลีก/ส่ง'];
+    
+    const csvContent = "\uFEFF" + [headers.join(','), sampleRow.join(',')].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "coldcall_customer_template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleFileSelect = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    setImportStep('reading');
+    setImportProgress(0);
+    setImportStatusMsg('กำลังอ่านและวิเคราะห์โครงสร้างไฟล์...');
+
+    const cleanValue = (val) => {
+      if (!val) return '';
+      let s = val.toString().trim();
+      if (s.startsWith('="') && s.endsWith('"')) {
+        s = s.substring(2, s.length - 1);
+      } else if (s.startsWith('=')) {
+        s = s.substring(1).replace(/^"|"$/g, '');
+      } else if (s.startsWith("'")) {
+        s = s.substring(1);
+      }
+      return s.trim();
+    };
+
+    const parseAndValidatePhone = (rawPhone) => {
+      if (!rawPhone) return { valid: false, error: 'ไม่พบข้อมูลเบอร์โทรศัพท์' };
+      let orig = rawPhone.toString().trim();
+      
+      if (orig.startsWith('="') && orig.endsWith('"')) {
+        orig = orig.substring(2, orig.length - 1);
+      } else if (orig.startsWith('=')) {
+        orig = orig.substring(1).replace(/^"|"$/g, '');
+      } else if (orig.startsWith("'")) {
+        orig = orig.substring(1);
+      }
+      orig = orig.trim();
+
+      let firstPart = orig;
+      if (orig.includes('-')) {
+        const hyphenParts = orig.split('-');
+        const lastPart = hyphenParts[hyphenParts.length - 1].trim();
+        if (lastPart.length > 0 && lastPart.length <= 2 && /^\d+$/.test(lastPart)) {
+          firstPart = hyphenParts.slice(0, -1).join('');
+        } else {
+          firstPart = hyphenParts.join('');
+        }
+      }
+
+      let phone = firstPart.replace(/[^0-9]/g, '');
+
+      if (phone && !phone.startsWith('0') && !phone.startsWith('+')) {
+        if (phone.length === 9 || phone.length === 8 || phone.length === 10) {
+          phone = '0' + phone;
+        }
+      }
+
+      if (!phone) {
+        return { valid: false, error: 'ไม่พบตัวเลขเบอร์โทรศัพท์', original: orig };
+      }
+      if (phone.startsWith('+')) {
+        if (phone.length < 10 || phone.length > 15) {
+          return { valid: false, error: `เบอร์ต่างประเทศความยาวไม่ถูกต้อง (${phone.length} หลัก)`, phone, original: orig };
+        }
+      } else {
+        if (phone.length !== 9 && phone.length !== 10 && phone.length !== 11) {
+          return { valid: false, error: `ความยาวเบอร์โทรไม่ถูกต้อง (${phone.length} หลัก)`, phone, original: orig };
+        }
+        if (!phone.startsWith('0')) {
+          return { valid: false, error: 'เบอร์โทรต้องเริ่มต้นด้วยเลข 0', phone, original: orig };
+        }
+      }
+
+      return { valid: true, phone, original: orig };
+    };
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const text = e.target.result;
+      try {
+        const lines = text.split('\n');
+        if (lines.length < 2) {
+          await dialog.alert({ title: 'ไฟล์ไม่ถูกต้อง', text: 'ไฟล์ไม่มีข้อมูลหรือโครงสร้างไม่ถูกต้อง', icon: 'error' });
+          setImportStep('idle');
+          return;
+        }
+
+        const delimiter = lines[0].includes(';') ? ';' : ',';
+        const rawHeaders = lines[0].split(delimiter).map(h => h.trim().replace(/^"|"$/g, '').replace(/^\uFEFF/, ''));
+        
+        const nameIdx = rawHeaders.findIndex(h => h.includes('ชื่อ') || h.includes('name'));
+        const phoneIdx = rawHeaders.findIndex(h => h.includes('เบอร์') || h.includes('โทร') || h.includes('phone') || h.includes('tel'));
+        const businessIdx = rawHeaders.findIndex(h => h.includes('ธุรกิจ') || h.includes('business'));
+        const statusIdx = rawHeaders.findIndex(h => h.includes('สถานะ') || h.includes('status'));
+        const freqAmtIdx = rawHeaders.findIndex(h => h.includes('ถี่') && (h.includes('เลข') || h.includes('จำนวน') || h.includes('amount') || h.includes('amt')));
+        const freqUnitIdx = rawHeaders.findIndex(h => h.includes('ถี่') && (h.includes('หน่วย') || h.includes('unit')));
+
+        if (phoneIdx === -1) {
+          await dialog.alert({ title: 'ไม่พบคอลัมน์สำคัญ', text: 'ไม่พบคอลัมน์ เบอร์โทรศัพท์ กรุณาใช้เทมเพลตที่ระบบให้ดาวน์โหลด', icon: 'error' });
+          setImportStep('idle');
+          return;
+        }
+
+        const validFormattedRows = [];
+        const invalidRows = [];
+
+        const rawLines = lines.slice(1).map(l => l.trim()).filter(l => l);
+        const totalLines = rawLines.length;
+
+        let currentIndex = 0;
+        const CHUNK_SIZE = 200;
+
+        const processChunk = () => {
+          const end = Math.min(currentIndex + CHUNK_SIZE, totalLines);
+          for (let i = currentIndex; i < end; i++) {
+            const line = rawLines[i];
+            
+            const row = [];
+            let insideQuote = false;
+            let current = '';
+            for (let char of line) {
+              if (char === '"') {
+                insideQuote = !insideQuote;
+              } else if (char === delimiter && !insideQuote) {
+                row.push(current.trim().replace(/^"|"$/g, ''));
+                current = '';
+              } else {
+                current += char;
+              }
+            }
+            row.push(current.trim().replace(/^"|"$/g, ''));
+
+            if (row.length === 0 || !row.join('').trim()) continue;
+
+            const rawPhone = phoneIdx !== -1 ? row[phoneIdx] : '';
+            const validation = parseAndValidatePhone(rawPhone);
+
+            const rowData = {
+              name: nameIdx !== -1 && row[nameIdx] ? cleanValue(row[nameIdx]) : 'ไม่ระบุชื่อลูกค้า',
+              businessType: businessIdx !== -1 && row[businessIdx] ? cleanValue(row[businessIdx]) : 'ทั่วไป',
+              status: '🆕 รอดำเนินการ',
+              stage: 'pool',
+              freqAmount: 1,
+              freqUnit: 'สัปดาห์',
+              originalPhone: rawPhone
+            };
+
+            if (validation.valid) {
+              validFormattedRows.push({ ...rowData, phone: validation.phone });
+            } else {
+              invalidRows.push({ ...rowData, phone: '', error: validation.error });
+            }
+          }
+
+          currentIndex = end;
+          setImportProgress((currentIndex / totalLines) * 100);
+          setImportStatusMsg(`กำลังวิเคราะห์ไฟล์ข้อมูล... (${currentIndex} / ${totalLines})`);
+
+          if (currentIndex < totalLines) {
+            setTimeout(processChunk, 16);
+          } else {
+            runDuplicationChecks();
+          }
+        };
+
+        const runDuplicationChecks = async () => {
+          setImportStatusMsg('กำลังตรวจสอบเบอร์โทรซ้ำซ้อนในระบบ...');
+          
+          const validRows = [];
+          const duplicateRows = [];
+          const seenPhonesInFile = new Set();
+          
+          const uniqueFormattedRows = [];
+          for (const row of validFormattedRows) {
+            if (seenPhonesInFile.has(row.phone)) {
+              duplicateRows.push({ ...row, error: 'เบอร์โทรศัพท์ซ้ำซ้อนในไฟล์เดียวกัน' });
+            } else {
+              seenPhonesInFile.add(row.phone);
+              uniqueFormattedRows.push(row);
+            }
+          }
+          
+          try {
+            const uniquePhones = uniqueFormattedRows.map(r => r.phone);
+            const existingPhones = await leadService.checkPhonesExist(uniquePhones);
+            
+            for (const row of uniqueFormattedRows) {
+              if (existingPhones.has(row.phone)) {
+                duplicateRows.push({ ...row, error: 'มีเบอร์โทรศัพท์นี้อยู่ในระบบแล้ว' });
+              } else {
+                validRows.push(row);
+              }
+            }
+          } catch (err) {
+            console.error("Duplication check failed:", err);
+            validRows.push(...uniqueFormattedRows);
+          }
+          
+          setParsedData({ valid: validRows, duplicates: duplicateRows, invalid: invalidRows });
+          setImportStep('parsed');
+        };
+
+        processChunk();
+
+      } catch (err) {
+        await dialog.alert({ title: 'เกิดข้อผิดพลาด', text: 'เกิดข้อผิดพลาดในการวิเคราะห์ไฟล์: ' + err.message, icon: 'error' });
+        setImportStep('idle');
+      }
+    };
+
+    reader.readAsText(file, 'utf-8');
+    event.target.value = null;
+  };
+
+  const handleStartDbImport = async () => {
+    if (parsedData.valid.length === 0) return;
+
+    setImportStep('uploading');
+    setImportProgress(0);
+    setImportStatusMsg('กำลังบันทึกข้อมูลเข้าสู่ฐานข้อมูล...');
+
+    const validRows = [...parsedData.valid];
+    const total = validRows.length;
+    
+    let success = 0;
+    let failed = 0;
+    const failedImportRows = [];
+    
+    let currentIndex = 0;
+    const CHUNK_SIZE = 15;
+
+    const saveChunk = async () => {
+      const end = Math.min(currentIndex + CHUNK_SIZE, total);
+      const chunk = validRows.slice(currentIndex, end);
+
+      const promises = chunk.map(async (row) => {
+        try {
+          await leadService.addManualLead(row);
+          success++;
+        } catch (err) {
+          failed++;
+          failedImportRows.push({ ...row, error: err.message || 'บันทึกลงฐานข้อมูลล้มเหลว' });
+        }
+      });
+
+      await Promise.all(promises);
+      
+      currentIndex = end;
+      setImportProgress((currentIndex / total) * 100);
+      setImportStatusMsg(`กำลังนำเข้าข้อมูล... (สำเร็จ ${success} / ล้มเหลว ${failed} / จาก ${total})`);
+
+      if (currentIndex < total) {
+        setTimeout(saveChunk, 50);
+      } else {
+        setImportSummary({ 
+          success, 
+          duplicate: parsedData.duplicates.length,
+          invalid: parsedData.invalid.length,
+          failed,
+          total: parsedData.valid.length + parsedData.duplicates.length + parsedData.invalid.length
+        });
+        
+        if (failedImportRows.length > 0) {
+          setParsedData(prev => ({
+            ...prev,
+            invalid: [...prev.invalid, ...failedImportRows]
+          }));
+        }
+
+        setImportStep('complete');
+        fetchLeads();
+        
+        if (showToast) {
+          if (failed > 0) {
+            showToast(`นำเข้าสำเร็จ ${success} รายการ, ล้มเหลว ${failed} รายการ`, 'warning');
+          } else {
+            showToast(`นำเข้าข้อมูลสำเร็จทั้งหมด ${success} รายการ`, 'success');
+          }
+        }
+      }
+    };
+
+    saveChunk();
+  };
+
+  const handleCancelImport = () => {
+    setImportStep('idle');
+    setImportProgress(0);
+    setImportStatusMsg('');
+    setParsedData({ valid: [], duplicates: [], invalid: [] });
+    setImportSummary({ success: 0, duplicate: 0, invalid: 0, failed: 0, total: 0 });
+  };
+
+  const downloadReportCSV = (rows, defaultFilename) => {
+    const headers = ['ชื่อลูกค้า', 'เบอร์โทรศัพท์', 'ประเภทธุรกิจ', 'สาเหตุ'];
+    const csvRows = [headers.join(',')];
+    
+    rows.forEach(row => {
+      const escaped = [
+        row.name || '',
+        row.phone || row.originalPhone || '',
+        row.businessType || '',
+        row.error || 'ข้อมูลไม่ผ่านเกณฑ์'
+      ].map(val => `"${val.toString().replace(/"/g, '""')}"`);
+      csvRows.push(escaped.join(','));
+    });
+
+    const csvContent = "\uFEFF" + csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `${defaultFilename}_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleSoftDeleteSingle = async (customer) => {
+    const confirmDelete = await dialog.confirm({
+      title: 'ย้ายรายชื่อไปที่ถังขยะ?',
+      text: `คุณต้องการย้ายรายชื่อ "${customer.name || customer.phone}" ไปที่ถังขยะใช่หรือไม่?\n\n*หมายเหตุ: รายชื่อในถังขยะจะถูกเก็บไว้เป็นเวลา 30 วันก่อนจะถูกลบออกถาวรโดยอัตโนมัติ`,
+      isDanger: true
+    });
+    if (!confirmDelete) return;
+
+    try {
+      setLoading(true);
+      await leadService.deleteCustomerSoft(customer.id || customer.phone, customer.stage || 'pool');
+      showToast("ย้ายรายชื่อไปที่ถังขยะเรียบร้อยแล้ว", "success");
+      
+      await leadService.logActivity({
+        adminId: currentAdminId || 'manager',
+        adminName: currentAdminName || 'Manager',
+        action: `ย้ายรายชื่อ "${customer.name || customer.phone}" ไปที่ถังขยะ`,
+        type: 'soft-delete',
+        customerId: customer.id || customer.phone,
+        customerName: customer.name,
+        customerPhone: customer.phone,
+        customerStage: 'trash'
+      });
+
+      setSelected(prev => prev.filter(id => id !== (customer.id || customer.phone)));
+      fetchLeads();
+    } catch (err) {
+      console.error(err);
+      showToast("เกิดข้อผิดพลาดในการลบรายชื่อ", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBulkSoftDelete = async () => {
+    const confirmDelete = await dialog.confirm({
+      title: 'ย้ายรายชื่อที่เลือกไปที่ถังขยะ?',
+      text: `คุณต้องการย้ายรายชื่อที่เลือกทั้งหมด ${selected.length} รายการไปที่ถังขยะใช่หรือไม่?\n\n*หมายเหตุ: รายชื่อในถังขยะจะถูกเก็บไว้เป็นเวลา 30 วันก่อนจะถูกลบออกถาวรโดยอัตโนมัติ`,
+      isDanger: true
+    });
+    if (!confirmDelete) return;
+
+    try {
+      setLoading(true);
+      
+      const promises = selected.map(async (id) => {
+        const customer = leads.find(l => l.id === id);
+        const originalStage = customer?.stage || 'pool';
+        await leadService.deleteCustomerSoft(id, originalStage);
+      });
+      
+      await Promise.all(promises);
+
+      await leadService.logActivity({
+        adminId: 'manager',
+        adminName: 'Manager',
+        action: `ย้ายรายชื่อจำนวน ${selected.length} รายการไปที่ถังขยะ (Bulk)`,
+        type: 'soft-delete-bulk',
+        details: `IDs: ${selected.join(', ')}`
+      });
+
+      showToast(`ย้ายรายชื่อ ${selected.length} รายการไปที่ถังขยะเรียบร้อยแล้ว`, "success");
+      setSelected([]);
+      fetchLeads();
+    } catch (err) {
+      console.error(err);
+      showToast("เกิดข้อผิดพลาดในการลบหลายรายชื่อ", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleAddMockupLead = async () => {
     setIsAdding(true);
     try {
@@ -116,7 +725,8 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
         name: `ลูกค้าทดสอบ (Mockup ${randomNo})`,
         businessType: 'ร้านค้าปลีก/ส่ง',
         customerNo: `M-${randomNo}`,
-        status: '🆕 รอดำเนินการ'
+        status: '🆕 รอดำเนินการ',
+        stage: 'pool'
       };
       
       await leadService.addManualLead(mockupData);
@@ -250,7 +860,7 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
       console.error("Summary load error", e);
     }
   };
-  // Helper for Retention Date Math
+
   const parseThaiDate = (dateStr) => {
     if (!dateStr) return null;
     const parts = dateStr.split('/');
@@ -278,7 +888,22 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
       l.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       l.phone?.includes(searchTerm);
     
-    if (filterStatus === 'all' && type !== 'retention') return matchesSearch;
+    if (!matchesSearch) return false;
+
+    // Filter by action date for admins in all views
+    if (!isManager) {
+      const todayVal = type === 'retention' ? mockToday : new Date();
+      const todayStr = getLocalDateString(todayVal);
+      const todayTh = todayVal.toLocaleDateString('th-TH');
+      const isDoneToday = type === 'retention'
+        ? getIsFollowedUpChecked(l, mockToday)
+        : (l.lastActionDate === todayStr) || (l.lastCallDate === todayTh);
+      
+      if (filterActionDate === 'today' && !isDoneToday) return false;
+      if (filterActionDate === 'not_today' && isDoneToday) return false;
+    }
+
+    if (filterStatus === 'all' && type !== 'retention') return true;
 
     if (type === 'retention') {
        if (filterFreqAmt) {
@@ -292,12 +917,17 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
        }
        if (filterFreqUnit && l.freqUnit !== filterFreqUnit) return false;
 
-       const isCompleted = completedThisWeekIds.has(l.id) || completedThisWeekIds.has(l.phone);
+       const isCompleted = getIsFollowedUpChecked(l, mockToday);
        
        const dueDate = getNextDueDate(l.lastOrderDate, l.freqAmount, l.freqUnit);
        const endOfMockToday = new Date(mockToday);
        endOfMockToday.setHours(23, 59, 59, 999);
-       const isDue = dueDate ? (dueDate <= endOfMockToday) : false;
+       const isDue = dueDate ? (dueDate <= endOfMockToday) : true;
+
+       const isFreqFilterActive = filterFreqAmt || filterFreqUnit;
+       if (!isFreqFilterActive) {
+          if (!isDue && !isCompleted) return false;
+       }
 
        if (filterTrackStatus === 'tracked') {
           if (!isCompleted) return false;
@@ -305,10 +935,19 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
           if (isCompleted) return false;
        }
        
+       const isOrdered = getIsOrderChecked(l, mockToday);
        if (filterOrderStatus === 'bought') {
-          if (l.status !== '✅ สั่งซื้อแล้ว') return false;
+          if (!isOrdered) return false;
        } else if (filterOrderStatus === 'not_bought') {
-          if (l.status === '✅ สั่งซื้อแล้ว') return false;
+          if (isOrdered) return false;
+       }
+
+       if (retentionSubTab === 'pending') {
+          if (isCompleted || isOrdered) return false;
+       } else if (retentionSubTab === 'ordered') {
+          if (!isOrdered) return false;
+       } else if (retentionSubTab === 'tracked') {
+          if (!isCompleted || isOrdered) return false;
        }
 
        return matchesSearch;
@@ -335,6 +974,22 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
     return matchesSearch;
   });
 
+  const todayVal = type === 'retention' ? mockToday : new Date();
+  const todayStr = getLocalDateString(todayVal);
+  const todayTh = todayVal.toLocaleDateString('th-TH');
+
+  const doneTodayCount = leads.filter(l => {
+    if (type === 'retention') {
+      return getIsFollowedUpChecked(l, mockToday);
+    }
+    const isDoneToday = 
+      (l.lastActionDate === todayStr) || 
+      (l.lastCallDate === todayTh);
+    return isDoneToday;
+  }).length;
+
+  const notDoneTodayCount = leads.length - doneTodayCount;
+
   if (loading && leads.length === 0) {
      return <TableSkeleton />;
   }
@@ -345,7 +1000,11 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
          data={leads} 
          pagination={pagination}
          onPageChange={setCurrentPage}
-         onManage={(l) => onCall(l, type === 'master-pool')} 
+         onManage={(l) => {
+           if (!isManager) {
+             onCall(l, type === 'master-pool');
+           }
+         }} 
        />
      );
   }
@@ -367,157 +1026,427 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 p-1 bg-slate-50 rounded-xl border border-slate-100 shadow-inner overflow-x-auto custom-scrollbar">
-           {type !== 'master-pool' && type !== 'retention' && (
-             <>
-               <button 
-                 onClick={() => setFilterStatus('todo')}
-                 className={`px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${filterStatus === 'todo' ? 'bg-white text-indigo-600 shadow-sm border border-slate-100' : 'text-slate-600 hover:text-slate-800'}`}
-               >
-                 {isManager ? 'งานที่ค้างมอบหมาย' : 'งานที่ได้รับมอบหมาย'}
-               </button>
-               {isManager && (
-                 <button 
-                   onClick={() => setFilterStatus('unassigned')}
-                   className={`px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${filterStatus === 'unassigned' ? 'bg-amber-100 text-amber-700 shadow-sm border border-amber-200' : 'text-slate-600 hover:text-slate-800'}`}
-                 >
-                   ยังไม่ได้มอบหมาย
-                 </button>
-               )}
-               <button 
-                 onClick={() => setFilterStatus('due')}
-                 className={`px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${filterStatus === 'due' ? 'bg-emerald-500 text-white shadow-md' : 'text-slate-600 hover:text-slate-800'}`}
-               >
-                 งานที่ติดตามแล้ว
-               </button>
-             </>
+        <div className="flex flex-nowrap items-center gap-2">
+           {type === 'retention' ? (
+             <CustomSelect
+               value={retentionSubTab}
+               onChange={e => setRetentionSubTab(e.target.value)}
+               containerClassName="w-56"
+               className="py-2 text-xs font-black"
+               dropdownZIndex={100}
+               options={[
+                 { value: 'all',     label: `ลูกค้าทั้งหมด (${leads.length})` },
+                 { value: 'pending', label: 'รอติดตาม' },
+                 { value: 'ordered', label: 'สั่งซื้อแล้ว' },
+                 { value: 'tracked', label: 'รอติดตามซ้ำ' },
+               ]}
+             />
+           ) : isManager ? (
+             <CustomSelect
+               value={filterStatus}
+               onChange={e => setFilterStatus(e.target.value)}
+               containerClassName="w-64"
+               className="py-2 text-xs font-black"
+               dropdownZIndex={100}
+               options={[
+                 { value: 'all', label: `ลูกค้าทั้งหมด (${pagination.total})` },
+                 ...(type !== 'master-pool' ? [
+                   { value: 'todo',       label: 'งานที่ค้างมอบหมาย' },
+                   { value: 'unassigned', label: 'ยังไม่ได้มอบหมาย' },
+                   { value: 'due',        label: 'งานที่ติดตามแล้ว' },
+                 ] : []),
+               ]}
+             />
+           ) : (
+             <CustomSelect
+               value={filterActionDate}
+               onChange={e => setFilterActionDate(e.target.value)}
+               containerClassName="w-64"
+               className="py-2 text-xs font-black"
+               dropdownZIndex={100}
+               options={[
+                 { value: 'all',      label: `ลูกค้าทั้งหมด (${leads.length})` },
+                 { value: 'not_today', label: `วันนี้ (ยังไม่ได้ทำ) (${notDoneTodayCount})` },
+               ]}
+             />
            )}
-           <button 
-             onClick={() => setFilterStatus('all')}
-             className={`px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${filterStatus === 'all' ? 'bg-white text-slate-800 shadow-sm border border-slate-100' : 'text-slate-600 hover:text-slate-800'}`}
-           >
-             รายชื่อทั้งหมด ({pagination.total})
-           </button>
 
-           {type === 'master-pool' && (
-             <button
-               onClick={handleAddMockupLead}
-               disabled={isAdding}
-               className="ml-2 px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-sm active:scale-95 disabled:opacity-50"
-             >
-               {isAdding ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} 
-               เพิ่มข้อมูลลูกค้าจำลอง (Mockup)
-             </button>
-           )}
-            {type === 'retention' && (
-              <button
-                onClick={handleAddMockRetentionLead}
-                disabled={isAdding}
-                className="ml-2 px-4 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-black uppercase tracking-widest hover:bg-primary transition-all flex items-center gap-2 shadow-sm active:scale-95 disabled:opacity-50"
-              >
-                {isAdding ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} 
-                เพิ่มข้อมูลลูกค้าประจำ (Retention)
-              </button>
+           {type === 'master-pool' && importStep === 'idle' && (
+              <div className="flex items-center gap-2 ml-2">
+                <label className="cursor-pointer">
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+                  <div className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition-all flex items-center gap-1.5 shadow-sm active:scale-95 text-center">
+                    <Upload size={13} /> นำเข้าไฟล์ CSV
+                  </div>
+                </label>
+                
+                <button
+                  onClick={handleDownloadTemplate}
+                  title="ดาวน์โหลดเทมเพลต Excel (.csv)"
+                  className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-indigo-600 rounded-lg border border-slate-200 transition-all active:scale-95 cursor-pointer flex items-center justify-center shadow-sm"
+                >
+                  <FileDown size={14} />
+                </button>
+              </div>
             )}
         </div>
       </div>
 
       {type === 'retention' && (
         <div className="flex flex-wrap items-center gap-3 bg-white p-3 rounded-2xl border border-slate-100 shadow-sm font-sans">
-          
-          <div className="flex items-center gap-2 px-2 border-r border-slate-200">
-             <Clock size={14} className="text-slate-400" />
-             <input 
-               type="date" 
-               value={mockTodayStr}
-               onChange={(e) => {
-                 setMockTodayStr(e.target.value);
-               }}
-               className="text-xs font-black bg-white border border-slate-200 rounded-lg px-2 py-1 outline-none text-indigo-600 focus:border-indigo-400 shadow-sm cursor-pointer"
-               title="Time Machine: กำหนดวันที่จำลอง"
-             />
-          </div>
-
           <div className="text-xs font-black text-slate-400 uppercase tracking-widest px-2 border-r border-slate-100">
              ตัวกรองพิเศษ :
           </div>
           
-          <select 
+          {/* Time Machine / Mock Date Selector */}
+          <div className="flex items-center gap-2 px-3 py-1 bg-indigo-50 border border-indigo-100 rounded-xl text-[11px] font-bold text-indigo-700 shadow-inner">
+            <Clock size={12} className="text-indigo-500 animate-pulse" />
+            <span>จำลองวันที่ :</span>
+            <input 
+              type="date"
+              value={mockTodayStr}
+              onChange={(e) => setMockTodayStr(e.target.value)}
+              className="bg-white border border-indigo-200 rounded px-1 py-0.5 text-[11px] text-indigo-700 outline-none focus:border-indigo-400 font-bold cursor-pointer"
+            />
+            {mockTodayStr !== new Date().toISOString().split('T')[0] && (
+              <button 
+                onClick={() => setMockTodayStr(new Date().toISOString().split('T')[0])}
+                title="กลับสู่วันที่ปัจจุบัน"
+                className="p-1 hover:bg-indigo-100 rounded text-indigo-600 transition-all active:scale-95 flex items-center justify-center"
+              >
+                <RotateCcw size={10} />
+              </button>
+            )}
+          </div>
+          
+          <CustomSelect 
              value={filterFreqAmt}
              onChange={e => setFilterFreqAmt(e.target.value)}
-             className="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-black px-3 py-2 rounded-xl outline-none focus:border-indigo-500 cursor-pointer"
-          >
-             <option value="">-- กรองระดับความรอบความถี่ --</option>
-             <option value="1">1</option>
-             <option value="2">2</option>
-             <option value="3">3 เดือนขึ้นไป</option>
-          </select>
+             className="px-3 py-2 text-xs"
+             containerClassName="w-full sm:w-56"
+             placeholder="-- กรองระดับความรอบความถี่ --"
+             options={[
+               { value: '', label: '-- กรองระดับความรอบความถี่ --' },
+               { value: '1', label: '1' },
+               { value: '2', label: '2' },
+               { value: '3', label: '3' }
+             ]}
+          />
 
-          <select 
+          <CustomSelect 
              value={filterFreqUnit}
              onChange={e => setFilterFreqUnit(e.target.value)}
-             className="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-black px-3 py-2 rounded-xl outline-none focus:border-indigo-500 cursor-pointer"
-          >
-             <option value="">-- กรองหน่วยรอบ --</option>
-             <option value="สัปดาห์">สัปดาห์</option>
-             <option value="เดือน">เดือน</option>
-          </select>
+             className="px-3 py-2 text-xs"
+             containerClassName="w-full sm:w-56"
+             placeholder="-- กรองหน่วยรอบ --"
+             options={[
+               { value: '', label: '-- กรองหน่วยรอบ --' },
+               { value: 'สัปดาห์', label: 'สัปดาห์' },
+               { value: 'เดือน', label: 'เดือน' }
+             ]}
+          />
 
-          <select 
+          <CustomSelect 
              value={filterTrackStatus}
              onChange={e => setFilterTrackStatus(e.target.value)}
-             className="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-black px-3 py-2 rounded-xl outline-none focus:border-indigo-500 cursor-pointer"
-          >
-             <option value="">-- สถานะการติดตามสัปดาห์นี้ --</option>
-             <option value="tracked">ติดตามแล้ว</option>
-             <option value="not_tracked">ยังไม่ได้ติดตาม</option>
-          </select>
+             className="px-3 py-2 text-xs"
+             containerClassName="w-full sm:w-56"
+             placeholder="-- สถานะการติดตามสัปดาห์นี้ --"
+             options={[
+               { value: '', label: '-- สถานะการติดตามสัปดาห์นี้ --' },
+               { value: 'tracked', label: 'ติดตามแล้ว' },
+               { value: 'not_tracked', label: 'ยังไม่ได้ติดตาม' }
+             ]}
+          />
 
-          <select 
+          <CustomSelect 
              value={filterOrderStatus}
              onChange={e => setFilterOrderStatus(e.target.value)}
-             className="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-black px-3 py-2 rounded-xl outline-none focus:border-indigo-500 cursor-pointer"
+             className="px-3 py-2 text-xs"
+             containerClassName="w-full sm:w-56"
+             placeholder="-- สถานะการสั่งซื้อจริง --"
+             options={[
+               { value: '', label: '-- สถานะการสั่งซื้อจริง --' },
+               { value: 'bought', label: 'สั่งซื้อแล้ว' },
+               { value: 'not_bought', label: 'ยังไม่ได้สั่งซื้อ' }
+             ]}
+          />
+
+          <button
+            onClick={() => {
+              setFilterFreqAmt('');
+              setFilterFreqUnit('');
+              setFilterTrackStatus('');
+              setFilterOrderStatus('');
+            }}
+            className="px-3 py-2 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-sm active:scale-95 border border-rose-100 cursor-pointer"
           >
-             <option value="">-- สถานะการสั่งซื้อจริง --</option>
-             <option value="bought">สั่งซื้อแล้ว</option>
-             <option value="not_bought">ยังไม่ได้สั่งซื้อ</option>
-          </select>
+            <RotateCcw size={12} />
+            ล้างตัวกรอง
+          </button>
+        </div>
+      )}
+
+      {/* CSV File Import Modal Panel (Only for master-pool) */}
+      {type === 'master-pool' && importStep !== 'idle' && (
+        <div className="fixed inset-0 bg-slate-900/40 z-50 backdrop-blur-sm flex items-center justify-center p-4 font-sans animate-in fade-in duration-300">
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-300 relative">
+            <button
+              onClick={handleCancelImport}
+              className="absolute right-4 top-4 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-xl transition-all"
+              title="ปิดหน้าต่างนี้"
+            >
+              <X size={18} />
+            </button>
+
+            {/* Reading or Uploading Progress */}
+            {(importStep === 'reading' || importStep === 'uploading') && (
+              <div className="space-y-4 py-4 pr-8">
+                <div className="flex justify-between items-center text-xs font-black uppercase tracking-wider text-slate-700">
+                  <span className="flex items-center gap-2">
+                    <Loader2 size={14} className="animate-spin text-indigo-600" />
+                    {importStatusMsg}
+                  </span>
+                  <span className="text-indigo-600">{Math.round(importProgress)}%</span>
+                </div>
+                <div className="h-3 bg-slate-200/50 rounded-full overflow-hidden shadow-inner border border-slate-100">
+                  <div
+                    className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 transition-all duration-300 rounded-full shadow-[0_0_8px_rgba(99,102,241,0.4)]"
+                    style={{ width: `${importProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Parsed Preview Section */}
+            {importStep === 'parsed' && (
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pr-8">
+                  <div>
+                    <h4 className="text-sm font-black text-slate-800 uppercase italic">สรุปผลการวิเคราะห์ไฟล์ข้อมูล</h4>
+                    <p className="text-[11px] text-slate-500 font-bold mt-0.5">กรุณาตรวจสอบสรุปข้อมูลก่อนกดยืนยันนำเข้าลงฐานข้อมูล</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={handleCancelImport}
+                      className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-600 rounded-xl text-xs font-black border border-slate-200 transition-all shadow-sm active:scale-95 cursor-pointer"
+                    >
+                      ยกเลิก / เคลียร์ไฟล์
+                    </button>
+                    <button
+                      onClick={handleStartDbImport}
+                      disabled={parsedData.valid.length === 0}
+                      className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed disabled:shadow-none text-white rounded-xl text-xs font-black shadow-md shadow-indigo-100 transition-all active:scale-95 cursor-pointer"
+                    >
+                      เริ่มนำเข้าข้อมูล ({parsedData.valid.length} รายการ)
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-center">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">ข้อมูลทั้งหมด</span>
+                    <span className="text-xl font-black text-slate-800 mt-1">{parsedData.valid.length + parsedData.duplicates.length + parsedData.invalid.length} รายการ</span>
+                  </div>
+                  <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-center border-l-4 border-l-emerald-500">
+                    <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">พร้อมนำเข้า (ปกติ)</span>
+                    <span className="text-xl font-black text-slate-800 mt-1">{parsedData.valid.length} รายการ</span>
+                  </div>
+                  <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-center border-l-4 border-l-amber-500">
+                    <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest">เบอร์ซ้ำ (ในระบบ/ไฟล์)</span>
+                    <span className="text-xl font-black text-slate-800 mt-1">{parsedData.duplicates.length} รายการ</span>
+                  </div>
+                  <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-center border-l-4 border-l-rose-500">
+                    <span className="text-[10px] font-black text-rose-500 uppercase tracking-widest">เบอร์มีปัญหา (รูปแบบผิด)</span>
+                    <span className="text-xl font-black text-slate-800 mt-1">{parsedData.invalid.length} รายการ</span>
+                  </div>
+                </div>
+
+                {(parsedData.duplicates.length > 0 || parsedData.invalid.length > 0) && (
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/50 flex flex-col gap-3">
+                    <div className="flex items-start gap-2.5">
+                      <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-[11px] text-slate-700 font-bold leading-relaxed">
+                          ระบบพบรายการที่ไม่สามารถนำเข้าได้ เนื่องจากข้อมูลไม่ตรงเงื่อนไข (เบอร์โทรซ้ำ หรือเบอร์มีปัญหารูปแบบผิด) เบอร์เหล่านี้จะถูกข้ามตอนกดยืนยันนำเข้า ท่านสามารถดาวน์โหลดรายงานแยกเป็นไฟล์เพื่อนำไปแก้ไขหรือตรวจสอบได้ตามด้านล่างนี้
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 pt-1 border-t border-slate-200/50">
+                      {parsedData.duplicates.length > 0 && (
+                        <button
+                          onClick={() => downloadReportCSV(parsedData.duplicates, 'duplicate_leads_report')}
+                          className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg text-[10px] font-black border border-amber-200 transition-all flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer"
+                        >
+                          <FileDown size={12} />
+                          ดาวน์โหลดรายงานเบอร์ซ้ำ ({parsedData.duplicates.length})
+                        </button>
+                      )}
+                      {parsedData.invalid.length > 0 && (
+                        <button
+                          onClick={() => downloadReportCSV(parsedData.invalid, 'invalid_leads_report')}
+                          className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[10px] font-black border border-rose-100 transition-all flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer"
+                        >
+                          <FileDown size={12} />
+                          ดาวน์โหลดรายงานเบอร์มีปัญหา ({parsedData.invalid.length})
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Import Complete Summary */}
+            {importStep === 'complete' && (
+              <div className="space-y-4 animate-in zoom-in-95 duration-300 pr-8">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-emerald-500 text-white rounded-full flex items-center justify-center shrink-0 shadow-lg shadow-emerald-100">
+                    <CheckCircle2 size={20} />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-emerald-800 uppercase italic">นำเข้าข้อมูลเสร็จสมบูรณ์!</h4>
+                    <p className="text-[11px] text-emerald-600 font-bold mt-0.5">ระบบได้บันทึกข้อมูลเรียบร้อยแล้ว (เบอร์นำเข้าใหม่ทั้งหมดจะแสดงในเมนู "รายชื่อเบอร์ใหม่")</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white p-4 rounded-xl border border-emerald-100/50 shadow-sm">
+                  <div>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">วิเคราะห์ทั้งหมด</span>
+                    <div className="text-lg font-black text-slate-800 mt-0.5">{importSummary.total} รายการ</div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">นำเข้าสำเร็จ</span>
+                    <div className="text-lg font-black text-slate-800 mt-0.5">{importSummary.success} รายการ</div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest">ข้ามเบอร์ซ้ำในระบบ</span>
+                    <div className="text-lg font-black text-slate-800 mt-0.5">{importSummary.duplicate} รายการ</div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black text-rose-500 uppercase tracking-widest">ล้มเหลว/ฟอร์แมตผิด</span>
+                    <div className="text-lg font-black text-slate-800 mt-0.5">{importSummary.invalid + importSummary.failed} รายการ</div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={handleCancelImport}
+                    className="px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-black border border-slate-200 transition-all shadow-sm active:scale-95 cursor-pointer"
+                  >
+                    ปิดหน้าต่างนี้
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleCancelImport();
+                      if (setView) setView('new-leads');
+                    }}
+                    className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black shadow-md shadow-indigo-100 transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"
+                  >
+                    <PhoneCall size={13} />
+                    ไปดูที่ "รายชื่อเบอร์ใหม่"
+                  </button>
+                  {parsedData.duplicates.length > 0 && (
+                    <button
+                      onClick={() => downloadReportCSV(parsedData.duplicates, 'duplicate_leads_report')}
+                      className="px-4 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl text-xs font-black border border-amber-100 transition-all flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+                    >
+                      <FileDown size={14} />
+                      ดาวน์โหลดรายงานเบอร์ซ้ำ ({parsedData.duplicates.length})
+                    </button>
+                  )}
+                  {parsedData.invalid.length > 0 && (
+                    <button
+                      onClick={() => downloadReportCSV(parsedData.invalid, 'invalid_leads_report')}
+                      className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-xs font-black border border-rose-100 transition-all flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+                    >
+                      <FileDown size={14} />
+                      ดาวน์โหลดรายงานเบอร์มีปัญหา ({parsedData.invalid.length})
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden font-sans">
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
+          <table className="w-full border-collapse table-fixed">
             <thead>
               <tr className="bg-slate-50/50 border-b border-slate-100">
-                <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic">No. / เลขที่ลูกค้า</th>
-                <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic">เบอร์โทรศัพท์ / QR Code</th>
+                {isManager && (
+                  <th className="px-4 py-4 w-12 text-center">
+                    <div 
+                      onClick={() => {
+                        const allIds = filteredData.map(l => l.id);
+                        if (allIds.length === 0) return;
+                        if (allIds.every(id => selected.includes(id))) {
+                          setSelected(prev => prev.filter(id => !allIds.includes(id)));
+                        } else {
+                          setSelected(prev => Array.from(new Set([...prev, ...allIds])));
+                        }
+                      }}
+                      className="flex items-center justify-center cursor-pointer hover:text-indigo-600 transition-colors"
+                    >
+                      {filteredData.length > 0 && filteredData.every(l => selected.includes(l.id))
+                        ? <CheckSquare size={16} className="text-indigo-600" />
+                        : <Square size={16} />
+                      }
+                    </div>
+                  </th>
+                )}
+                <th className={`px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic ${type === 'master-pool' ? 'w-[30%]' : 'w-[22%]'}`}>No. / เลขที่ลูกค้า</th>
+                <th className={`px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic ${type === 'master-pool' ? 'w-[20%]' : 'w-[13%]'}`}>เบอร์โทรศัพท์ / QR Code</th>
+                {type === 'master-pool' && (
+                  <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic w-[18%]">หมวดหมู่ปัจจุบัน</th>
+                )}
                 {type === 'retention' ? (
                   <>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic">ผู้รับผิดชอบ</th>
-                    <th className="px-6 py-4 text-center text-xs font-black text-slate-600 uppercase tracking-widest italic">ติดตามสัปดาห์นี้</th>
-                    <th className="px-6 py-4 text-center text-xs font-black text-slate-600 uppercase tracking-widest italic">สั่งซื้อสำเร็จ</th>
+                    <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic w-[15%]">ผู้รับผิดชอบ</th>
+                    <th className="px-6 py-4 text-center text-xs font-black text-slate-600 uppercase tracking-widest italic w-[12%]">ติดตามสัปดาห์นี้</th>
+                    <th className="px-6 py-4 text-center text-xs font-black text-slate-600 uppercase tracking-widest italic w-[11%]">สั่งซื้อสำเร็จ</th>
+                    {!isManager && (
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic w-[15%]">ทำเบอร์ล่าสุดวันไหน</th>
+                    )}
                   </>
                 ) : (
-                  <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic">สถานะ / ผู้รับผิดชอบ</th>
-                )}
-                {type === 'retention' && isManager && (
-                  <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic">ความรอบความถี่ (รอบออเดอร์)</th>
-                )}
-                {type !== 'master-pool' && type !== 'retention' && (
                   <>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic">Coldcall Rating</th>
-                    <th className="px-6 py-4 text-center text-xs font-black text-slate-600 uppercase tracking-widest italic">คะแนนบอท</th>
+                    <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic w-[17%]">สถานะ / ผู้รับผิดชอบ</th>
+                    {!isManager && (
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic w-[15%]">ทำเบอร์ล่าสุดวันไหน</th>
+                    )}
                   </>
                 )}
-                {type !== 'master-pool' && <th className="px-6 py-4 text-right text-xs font-black text-slate-600 uppercase tracking-widest italic">จัดการ</th>}
+                {isManager && type !== 'master-pool' && type !== 'retention' && (
+                  <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic w-[15%]">ทำเบอร์ล่าสุดวันไหน</th>
+                )}
+                <th className={`px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic ${type === 'retention' ? 'w-[14%]' : 'w-[11%]'}`}>ความรอบการติดตาม</th>
+                {type !== 'master-pool' && type !== 'retention' && (
+                  <>
+                    <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic w-[11%]">Coldcall Rating</th>
+                    <th className="px-6 py-4 text-center text-xs font-black text-slate-600 uppercase tracking-widest italic w-[6%]">คะแนนบอท</th>
+                  </>
+                )}
+                <th className="px-6 py-4 text-right text-xs font-black text-slate-600 uppercase tracking-widest italic w-[8%]">จัดการ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {filteredData.length > 0 ? (
                 filteredData.map(l => {
-                  const isCompleted = completedThisWeekIds.has(l.id);
-                  const isAssigned = assignedThisWeekIds.has(l.id);
+                  const isCompleted = type === 'retention'
+                    ? getIsFollowedUpChecked(l, mockToday)
+                    : (completedThisWeekIds.has(l.id) || completedThisWeekIds.has(l.phone));
+                  const isOrdered = type === 'retention'
+                    ? getIsOrderChecked(l, mockToday)
+                    : (l.status === '✅ สั่งซื้อแล้ว' || l.status === 'สั่งซื้อแล้ว');
+                  const isAssigned = assignedThisWeekIds.has(l.id) || assignedThisWeekIds.has(l.phone);
                   // Pool stage is ALWAYS view-only - no editing allowed
                   const isPoolView = type === 'master-pool';
                   const readonly = isPoolView;
@@ -528,6 +1457,21 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
                       className={`transition-colors group ${(isPoolView || isManager) ? 'cursor-default' : 'cursor-pointer hover:bg-slate-50/50'}`}
                       onClick={() => !isPoolView && !isManager && onCall(l, readonly)}
                     >
+                      {isManager && (
+                        <td className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                          <div 
+                            onClick={() => {
+                              setSelected(prev => prev.includes(l.id) ? prev.filter(id => id !== l.id) : [...prev, l.id]);
+                            }}
+                            className="flex items-center justify-center cursor-pointer hover:text-indigo-600 transition-colors"
+                          >
+                            {selected.includes(l.id) 
+                              ? <CheckSquare size={16} className="text-indigo-600" />
+                              : <Square size={16} />
+                            }
+                          </div>
+                        </td>
+                      )}
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                            <div className="w-10 h-10 rounded-xl bg-slate-50 flex flex-col items-center justify-center border border-slate-100 shadow-inner group-hover:scale-105 transition-transform duration-300">
@@ -542,7 +1486,7 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
                               <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5 italic flex items-center gap-1.5">
                                  {isPoolView
                                    ? <span className="text-amber-500">⚠️ ข้อมูลบอทระบบ (Read-only)</span>
-                                   : (isManager ? '' : 'คลิกเพื่อดูรายละเอียด / โทรติดตาม')}
+                                   : 'คลิกเพื่อดูรายละเอียด / โทรติดตาม'}
                               </div>
                            </div>
                         </div>
@@ -572,6 +1516,55 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
                            )}
                         </div>
                       </td>
+                      {type === 'master-pool' && (
+                         <td className="px-6 py-4">
+                           {(() => {
+                             const inactiveStatuses = [
+                               'ปิดเครื่อง / ติดต่อไม่ได้',
+                               'ไม่สนใจ',
+                               'เลิกขาย/ปิดกิจการ',
+                               'ยังไม่สะดวกคุยตอนนี้',
+                               'ติดต่อยาก / รอสายยาว',
+                               'ลูกค้ามีสินค้าเหลือในสต็อก',
+                               'ต้องการของแถม/โปรโมชั่นพิเศษ',
+                               'โทรไม่รับ',
+                               'โทรไม่ซื้อ'
+                             ];
+                             let label = '';
+                             let badgeStyle = '';
+                             
+                             if (l.stage === 'pool') {
+                               if (l.status === '🆕 รอดำเนินการ') {
+                                 label = 'เบอร์ใหม่';
+                                 badgeStyle = 'bg-slate-50 text-slate-600 border-slate-200';
+                               } else {
+                                 label = 'คลังเบอร์โทร';
+                                 badgeStyle = 'bg-indigo-50 text-indigo-600 border-indigo-100';
+                               }
+                             } else if (l.stage === 'qualified') {
+                               label = 'ลูกค้ารอตัดสินใจ';
+                               badgeStyle = 'bg-amber-50 text-amber-700 border-amber-200';
+                             } else if (l.stage === 'customer') {
+                               if (inactiveStatuses.includes(l.status)) {
+                                 label = 'ลูกค้าหาย';
+                                 badgeStyle = 'bg-rose-50 text-rose-600 border-rose-100';
+                               } else {
+                                 label = 'ลูกค้าประจำ';
+                                 badgeStyle = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                               }
+                             } else {
+                               label = l.stage || '-';
+                               badgeStyle = 'bg-slate-50 text-slate-500 border-slate-100';
+                             }
+
+                             return (
+                               <span className={`inline-flex items-center px-2.5 py-1 border rounded-xl text-xs font-black uppercase tracking-wider shadow-sm ${badgeStyle}`}>
+                                 {label}
+                               </span>
+                             );
+                           })()}
+                         </td>
+                       )}
                       {type === 'retention' ? (
                         <>
                           {/* 1. ผู้รับผิดชอบ (Responsible Admin) */}
@@ -608,7 +1601,7 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
 
                           {/* 3. สั่งซื้อสำเร็จ (Order) */}
                           <td className="px-6 py-4 text-center">
-                            {l.status === '✅ สั่งซื้อแล้ว' ? (
+                            {isOrdered ? (
                               <span className="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 text-sm font-black shadow-sm transform hover:scale-110 transition-transform duration-300">
                                 ✅
                               </span>
@@ -616,57 +1609,96 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
                               <span className="text-slate-200">-</span>
                             )}
                           </td>
+
+                          {!isManager && (
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform duration-300">
+                                  <Calendar size={14} className="text-slate-500" />
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="text-xs font-black text-slate-800 leading-tight">
+                                    {formatLastActionDate(l)}
+                                  </span>
+                                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5 italic">
+                                    ทำล่าสุดวันไหน
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+                          )}
                         </>
                       ) : (
+                        <>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col gap-1.5">
+                               <span className={`w-fit px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest italic ${isCompleted ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-600'} shadow-sm border`}>
+                                  {l.status || 'รอดำเนินการ'}
+                               </span>
+                               {l.responsibleName && l.responsibleName !== 'Unassigned' ? (
+                                 <div className="flex items-center gap-1">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 opacity-50" />
+                                    <span className="text-[10px] font-black text-slate-600 uppercase italic">{l.responsibleName}</span>
+                                 </div>
+                               ) : (
+                                 <div className="flex items-center gap-1">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-slate-200" />
+                                    <span className="text-[10px] text-slate-400 italic">Unassigned</span>
+                                 </div>
+                               )}
+                            </div>
+                          </td>
+                          {!isManager && (
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform duration-300">
+                                  <Calendar size={14} className="text-slate-500" />
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="text-xs font-black text-slate-800 leading-tight">
+                                    {formatLastActionDate(l)}
+                                  </span>
+                                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5 italic">
+                                    ทำล่าสุดวันไหน
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+                          )}
+                        </>
+                      )}
+                      {isManager && type !== 'master-pool' && type !== 'retention' && (
                         <td className="px-6 py-4">
-                          <div className="flex flex-col gap-1.5">
-                             <span className={`w-fit px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest italic ${isCompleted ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-600'} shadow-sm border`}>
-                                {l.status || 'รอดำเนินการ'}
-                             </span>
-                             {l.responsibleName && l.responsibleName !== 'Unassigned' ? (
-                               <div className="flex items-center gap-1">
-                                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 opacity-50" />
-                                  <span className="text-[10px] font-black text-slate-600 uppercase italic">{l.responsibleName}</span>
-                               </div>
-                             ) : (
-                               <div className="flex items-center gap-1">
-                                  <div className="w-1.5 h-1.5 rounded-full bg-slate-200" />
-                                  <span className="text-[10px] text-slate-400 italic">Unassigned</span>
-                               </div>
-                             )}
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform duration-300">
+                              <Calendar size={14} className="text-slate-500" />
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-xs font-black text-slate-800 leading-tight">
+                                {formatLastActionDate(l)}
+                              </span>
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5 italic">
+                                ทำล่าสุดวันไหน
+                              </span>
+                            </div>
                           </div>
                         </td>
                       )}
-                      {type === 'retention' && (
-                        <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                           <div className="flex flex-col gap-1.5 w-36 bg-slate-50 p-2 rounded-xl border border-slate-100 shadow-inner">
-                              <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest italic flex items-center justify-between">
-                                 <span>กำหนดรอบรอบความถี่</span>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                 <input 
-                                   type="number" 
-                                   defaultValue={l.freqAmount || 1}
-                                   min={1}
-                                   max={12}
-                                   onBlur={(e) => leadService.updateCustomer(l.id || l.phone, { freqAmount: parseInt(e.target.value) || 1 })}
-                                   className="w-12 bg-white border border-slate-200 rounded text-xs font-black px-1.5 py-1 outline-none focus:border-indigo-500 transition-all"
-                                 />
-                                 <select 
-                                   defaultValue={l.freqUnit || 'สัปดาห์'}
-                                   onChange={(e) => leadService.updateCustomer(l.id || l.phone, { freqUnit: e.target.value })}
-                                   className="bg-white border border-slate-200 rounded text-[10px] font-black px-1 py-1.5 outline-none focus:border-indigo-500 flex-1 cursor-pointer transition-all"
-                                 >
-                                    <option value="สัปดาห์">สัปดาห์</option>
-                                    <option value="เดือน">เดือน</option>
-                                 </select>
-                              </div>
-                              <div className="text-[9px] font-bold text-slate-500 mt-0.5">
-                                สั่งซื้อล่าสุด: <span className="text-slate-800 font-black">{l.lastOrderDate || '-'}</span>
-                              </div>
-                           </div>
-                        </td>
-                      )}
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform duration-300">
+                            <Clock size={14} className="text-slate-500" />
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-xs font-black text-slate-800 leading-tight">
+                              {l.freqAmount || 1} {l.freqUnit || 'สัปดาห์'}
+                            </span>
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5 italic">
+                              รอบการติดตาม
+                            </span>
+                          </div>
+                        </div>
+                      </td>
                       {type !== 'master-pool' && type !== 'retention' && (
                         <>
                           <td className="px-6 py-4">
@@ -685,41 +1717,49 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
                           </td>
                         </>
                       )}
-                      {type !== 'master-pool' && (
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-2 text-sm font-bold">
-                            {!isManager && (
+                      <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-2 text-sm font-bold">
+                          {isManager || !readonly ? (
+                            <>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  onCall(l, readonly);
+                                  setSelectedCustomerForEdit(l);
+                                  setIsEditModalOpen(true);
                                 }}
-                                className={`p-2.5 rounded-xl transition-all shadow-sm ${readonly ? 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none border border-slate-100' : 'bg-primary/10 text-primary hover:bg-primary hover:text-white active:scale-95 border border-primary/5'}`}
-                                disabled={readonly}
-                                title={readonly ? 'ระบบอ่านอย่างเดียว' : 'โทรติดต่อ / บันทึกประวัติ'}
+                                className="p-2.5 rounded-xl bg-slate-50 text-slate-600 hover:bg-slate-900 hover:text-white transition-all shadow-sm border border-slate-200 active:scale-95 cursor-pointer flex items-center justify-center"
+                                title="แก้ไขข้อมูลลูกค้า"
                               >
-                                <PhoneCall size={18} />
+                                <Edit2 size={16} />
                               </button>
-                            )}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSoftDeleteSingle(l);
+                                }}
+                                className="p-2.5 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white transition-all shadow-sm border border-rose-100 active:scale-95 cursor-pointer flex items-center justify-center"
+                                title="ย้ายไปถังขยะ"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </>
+                          ) : (
                             <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setQrModal({ open: true, phone: l.phone, name: l.name });
-                              }}
-                              className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white transition-all shadow-sm border border-emerald-100/50 active:scale-95"
-                              title="แสดง QR Code เพื่อใช้สแกนโทร"
+                              className="p-2.5 rounded-xl bg-gray-100 text-gray-400 cursor-not-allowed shadow-none border border-slate-100 flex items-center justify-center"
+                              disabled
+                              title="ระบบอ่านอย่างเดียว"
                             >
-                              <QrCode size={18} />
+                              <PhoneCall size={18} />
                             </button>
-                          </div>
-                        </td>
-                      )}
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   );
                 })
               ) : (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-600">
+                  <td colSpan={12} className="px-6 py-12 text-center text-slate-600">
                     <div className="flex flex-col items-center gap-2 opacity-50">
                        <AlertCircle size={40} className="stroke-[1px]" />
                        <div className="text-sm font-black uppercase tracking-widest italic">ไม่พบข้อมูลรายชื่อลูกค้าในเงื่อนไขนี้</div>
@@ -826,16 +1866,16 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
                        <button 
                          onClick={(e) => {
                            e.stopPropagation();
-                           if (type === 'master-pool') {
+                           if (type === 'master-pool' || isManager) {
                              setQrModal({ open: true, phone: drawerData.phone, name: drawerData.name });
                            } else {
                              onCall(drawerData, false, drawerData.phone);
                            }
                          }}
                          className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all"
-                         title={type === 'master-pool' ? 'แสดง QR Code' : 'โทรติดต่อ'}
+                         title={type === 'master-pool' || isManager ? 'แสดง QR Code' : 'โทรติดต่อ'}
                        >
-                         {type === 'master-pool' ? <QrCode size={14} /> : <PhoneCall size={14} />}
+                         {type === 'master-pool' || isManager ? <QrCode size={14} /> : <PhoneCall size={14} />}
                        </button>
                    </div>
                    {drawerData.allPhones?.length > 1 && drawerData.allPhones.slice(1).map((p, i) => (
@@ -847,16 +1887,16 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
                         <button 
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (type === 'master-pool') {
+                            if (type === 'master-pool' || isManager) {
                               setQrModal({ open: true, phone: p, name: drawerData.name });
                             } else {
                               onCall(drawerData, false, p);
                             }
                           }}
                           className="p-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all"
-                          title={type === 'master-pool' ? 'แสดง QR Code' : 'โทรติดต่อ'}
+                          title={type === 'master-pool' || isManager ? 'แสดง QR Code' : 'โทรติดต่อ'}
                         >
-                          {type === 'master-pool' ? <QrCode size={14} /> : <PhoneCall size={14} />}
+                          {type === 'master-pool' || isManager ? <QrCode size={14} /> : <PhoneCall size={14} />}
                         </button>
                      </div>
                    ))}
@@ -897,7 +1937,7 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
             </div>
             
             {/* Drawer Footer */}
-            {type !== 'master-pool' && (
+            {type !== 'master-pool' && !isManager && (
                <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex gap-3 shrink-0">
                  <button 
                    onClick={() => {
@@ -920,6 +1960,49 @@ const CustomerListView = ({ type, activeTab, setActiveTab, currentAdminId, role,
         phone={qrModal.phone}
         name={qrModal.name}
       />
+
+      <EditCustomerModal
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setSelectedCustomerForEdit(null);
+        }}
+        customer={selectedCustomerForEdit}
+        onSave={() => {
+          fetchLeads();
+        }}
+        showToast={showToast}
+        currentAdminId={currentAdminId}
+        currentAdminName={currentAdminName}
+      />
+
+      {/* Floating Bulk Actions Bar */}
+      {isManager && selected.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-6 py-4 rounded-3xl shadow-2xl border border-slate-800 flex items-center gap-6 animate-in slide-in-from-bottom-12 duration-300">
+          <div className="flex items-center gap-2">
+            <span className="w-6 h-6 rounded-full bg-indigo-500 flex items-center justify-center text-xs font-black">
+              {selected.length}
+            </span>
+            <span className="text-xs font-black tracking-wider uppercase text-slate-300">รายการที่เลือก</span>
+          </div>
+          <div className="h-5 w-px bg-slate-800" />
+          <div className="flex gap-2">
+            <button
+              onClick={() => handleBulkSoftDelete()}
+              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black shadow-lg transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 border-none"
+            >
+              <Trash2 size={14} />
+              ย้ายไปถังขยะ ({selected.length} รายการ)
+            </button>
+            <button
+              onClick={() => setSelected([])}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl text-xs font-black transition-all active:scale-95 cursor-pointer border-none"
+            >
+              ยกเลิก
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

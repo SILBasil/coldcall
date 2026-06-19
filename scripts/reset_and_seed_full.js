@@ -65,11 +65,12 @@ class BatchWriter {
 
 // ── constants ─────────────────────────────────────────────────────────────────
 const ADMINS = [
-  { id: "a1", name: "แอดมิน พลอย", color: "#6366f1", username: "admin1", password: "password123", performance: 85 },
-  { id: "a2", name: "แอดมิน ก้อง", color: "#10b981", username: "admin2", password: "password123", performance: 62 },
-  { id: "a3", name: "แอดมิน แนน", color: "#f59e0b", username: "admin3", password: "password123", performance: 94 },
-  { id: "a4", name: "แอดมิน บอย", color: "#ec4899", username: "admin4", password: "password123", performance: 78 },
-  { id: "a5", name: "แอดมิน ใหม่", color: "#8b5cf6", username: "admin5", password: "password123", performance: 45 },
+  { id: 'a1', username: 'khaofang@coldcall.com', password: '1234', name: 'ข้าวฟ่าง', color: '#E9D5FF' },
+  { id: 'a2', username: 'tim@coldcall.com', password: '1234', name: 'ทิม', color: '#374151' },
+  { id: 'a3', username: 'thee@coldcall.com', password: '1234', name: 'ธีร์', color: '#DCFCE7' },
+  { id: 'a4', username: 'nice@coldcall.com', password: '1234', name: 'ไนซ์', color: '#FEE2E2' },
+  { id: 'a5', username: 'ploy@coldcall.com', password: '1234', name: 'พลอย', color: '#FEF3C7' },
+  { id: 'a6', username: 'toey@coldcall.com', password: '1234', name: 'Toey', color: '#DBEAFE' }
 ];
 const MANAGER = { id: "m1", name: "Manager Basil", color: "#0ea5e9", role: "manager", username: "basil", password: "password123" };
 const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
@@ -194,7 +195,7 @@ async function main() {
     const ref = doc(collection(db, COL_CUSTOMERS));
     const d = randDate(60); 
     // Pool usually untouched, updatedAt = createdAt
-    await bw.set(ref, { name:"", phone:randomPhone(), stage:"pool", bot_score:0, location:pick(PROVINCES), responsibleId:null, responsibleName:"Unassigned", status:"🆕 เบอร์ใหม่", additionalPhones:[], createdAt:ts(d), updatedAt:ts(d) });
+    await bw.set(ref, { name:"", phone:randomPhone(), stage:"pool", bot_score:0, location:pick(PROVINCES), responsibleId:null, responsibleName:"Unassigned", status:"🆕 รอดำเนินการ", additionalPhones:[], createdAt:ts(d), updatedAt:ts(d) });
     allCustomers.push({ id:ref.id, name:"", phone:"", stage:"pool", responsibleId:null });
   }
   console.log("  ✅ Pool: 80");
@@ -209,7 +210,7 @@ async function main() {
     // Guarantee some updates happened in the last 28 days for dashboard stats
     const updatedAt = Math.random()>0.3 ? randDate(28) : createdAt; 
     const score = rand(2,5);
-    await bw.set(ref, { name, phone, stage:"qualified", bot_score:score, location:pick(PROVINCES), responsibleId:admin?.id||null, responsibleName:admin?.name||"Unassigned", status:"⏳ รอการตัดสินใจ", type:"ยังไม่เคยเปิดบิล", date:updatedAt.toLocaleDateString("th-TH"), remark:pick(["บอทแจ้งว่าลูกค้าสนใจรายการสินค้าใหม่","ลูกค้าถามเรื่องการส่งสินค้า ต้องการตัวอย่างก่อน","บอทระบุว่าลูกค้าสนใจให้เซลล์เข้าพบ","ลูกค้าเน้นเรื่องคุณภาพ สนใจเกรดพรีเมียม"]), additionalPhones:Math.random()>0.7?[randomPhone()]:[], createdAt:ts(createdAt), updatedAt:ts(updatedAt) });
+    await bw.set(ref, { name, phone, stage:"qualified", bot_score:score, location:pick(PROVINCES), responsibleId:admin?.id||null, responsibleName:admin?.name||"Unassigned", status:"⏳ รอการตัดสินใจ (Pending)", type:"ยังไม่เคยเปิดบิล", date:updatedAt.toLocaleDateString("th-TH"), remark:pick(["บอทแจ้งว่าลูกค้าสนใจรายการสินค้าใหม่","ลูกค้าถามเรื่องการส่งสินค้า ต้องการตัวอย่างก่อน","บอทระบุว่าลูกค้าสนใจให้เซลล์เข้าพบ","ลูกค้าเน้นเรื่องคุณภาพ สนใจเกรดพรีเมียม"]), additionalPhones:Math.random()>0.7?[randomPhone()]:[], createdAt:ts(createdAt), updatedAt:ts(updatedAt) });
     const c = { id:ref.id, name, phone, stage:"qualified", responsibleId:admin?.id||null, responsibleName:admin?.name||"Unassigned" };
     allCustomers.push(c); qualifiedList.push(c);
   }
@@ -229,7 +230,7 @@ async function main() {
     const months = MONTHS_TH.slice(0,4);
     for (let k=0; k<rand(4,14); k++) gridData[`${pick(months)}-${pick(WEEKS)}-followup`] = true;
     if (hasOrders) for (let k=0; k<rand(1,6); k++) gridData[`${pick(months)}-${pick(WEEKS)}-order`] = true;
-    await bw.set(ref, { name, phone, stage:"customer", bot_score:5, location:pick(PROVINCES), responsibleId:admin?.id||null, responsibleName:admin?.name||"Unassigned", status:hasOrders?"✅ สั่งซื้อแล้ว":"🟡 รอการตัดสินใจ", type:pick(["ลูกค้าเก่า","เคยสั่งซื้อแล้ว","ลูกค้า VIP"]), lastCallDate:updatedAt.toLocaleDateString("th-TH"), lastOrderDate:hasOrders?updatedAt.toLocaleDateString("th-TH"):"", freqAmount:rand(1,6), freqUnit:pick(["สัปดาห์","เดือน"]), gridData, additionalPhones:Math.random()>0.6?[randomPhone()]:[], createdAt:ts(createdAt), updatedAt:ts(updatedAt) });
+    await bw.set(ref, { name, phone, stage:"customer", bot_score:5, location:pick(PROVINCES), responsibleId:admin?.id||null, responsibleName:admin?.name||"Unassigned", status:hasOrders?"✅ ปิดดีลสำเร็จ (Closed Won)":"⏳ รอการตัดสินใจ (Pending)", type:pick(["ลูกค้าเก่า","เคยสั่งซื้อแล้ว","ลูกค้า VIP"]), lastCallDate:updatedAt.toLocaleDateString("th-TH"), lastOrderDate:hasOrders?updatedAt.toLocaleDateString("th-TH"):"", freqAmount:rand(1,6), freqUnit:pick(["สัปดาห์","เดือน"]), gridData, additionalPhones:Math.random()>0.6?[randomPhone()]:[], createdAt:ts(createdAt), updatedAt:ts(updatedAt) });
     const c = { id:ref.id, name, phone, stage:"customer", responsibleId:admin?.id||null, responsibleName:admin?.name||"Unassigned" };
     allCustomers.push(c); retentionList.push(c);
   }

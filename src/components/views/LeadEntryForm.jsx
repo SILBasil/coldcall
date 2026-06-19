@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 
 import QRCodeModal from '../common/QRCodeModal';
+import CustomSelect from '../common/CustomSelect';
 import { leadService } from '../../services/leadService';
 import ContactHistory from '../common/ContactHistory';
 import HistoryCalendar from '../common/HistoryCalendar';
@@ -101,7 +102,14 @@ const LeadEntryForm = ({ customer, onBack, showToast, currentAdminId, currentAdm
 
   useEffect(() => {
     if (customer.formState) {
-      setFormState(customer.formState);
+      setFormState(prev => ({
+        ...prev,
+        ...customer.formState,
+        checklist: { ...prev.checklist, ...(customer.formState.checklist || {}) },
+        callTracking: { ...prev.callTracking, ...(customer.formState.callTracking || {}) },
+        sampleStatus: { ...prev.sampleStatus, ...(customer.formState.sampleStatus || {}) },
+        visitStatus: { ...prev.visitStatus, ...(customer.formState.visitStatus || {}) }
+      }));
     }
   }, [customer]);
 
@@ -116,6 +124,13 @@ const LeadEntryForm = ({ customer, onBack, showToast, currentAdminId, currentAdm
 
   const logCall = async () => {
     try {
+      const mockStr = localStorage.getItem('mockTodayStr');
+      const now = mockStr ? new Date(mockStr) : new Date();
+      if (mockStr) {
+        const realNow = new Date();
+        now.setHours(realNow.getHours(), realNow.getMinutes(), realNow.getSeconds(), realNow.getMilliseconds());
+      }
+
       await leadService.logActivity({
         adminId: currentAdminId,
         adminName: currentAdminName,
@@ -123,13 +138,13 @@ const LeadEntryForm = ({ customer, onBack, showToast, currentAdminId, currentAdm
         customerName: customer.name,
         customerPhone: customer.phone,
         customerStage: customer.stage,
-        action: `โทรหาลูกค้าแล้วเมื่อเวลา ${new Date().toLocaleTimeString('th-TH')}`,
+        action: `โทรหาลูกค้าแล้วเมื่อเวลา ${now.toLocaleTimeString('th-TH')}`,
         type: 'call'
       });
       // Increment attempt count
       setFormState(prev => ({
         ...prev,
-        callTracking: { ...prev.callTracking, count: prev.callTracking.count + 1, date: new Date().toISOString().split('T')[0] }
+        callTracking: { ...prev.callTracking, count: prev.callTracking.count + 1, date: now.toISOString().split('T')[0] }
       }));
       showToast("บันทึกประวัติการโทรเรียบร้อย");
     } catch (err) {
@@ -141,22 +156,36 @@ const LeadEntryForm = ({ customer, onBack, showToast, currentAdminId, currentAdm
   const handleSave = async () => {
     setIsSubmitting(true);
     try {
+      const mockStr = localStorage.getItem('mockTodayStr');
+      const now = mockStr ? new Date(mockStr) : new Date();
+      if (mockStr) {
+        const realNow = new Date();
+        now.setHours(realNow.getHours(), realNow.getMinutes(), realNow.getSeconds(), realNow.getMilliseconds());
+      }
+
       const duration = Math.floor((Date.now() - openedAtRef.current) / 1000);
+      const tzOffset = now.getTimezoneOffset() * 60000;
+      const localTodayYmd = (new Date(now.getTime() - tzOffset)).toISOString().split('T')[0];
 
       const updates = {
         formState,
         matchingTopics,
         lineId: socialLinks.lineId,
         facebookUrl: socialLinks.facebookUrl,
-        lastUpdated: new Date()
+        lastUpdated: now,
+        lastActionDate: localTodayYmd,
+        status: formState.status
       };
 
       // Auto-transition to Retention if Closed Won
       if (formState.status === '✅ ปิดดีลสำเร็จ (Closed Won)') {
         updates.stage = 'customer';
-        updates.wonAt = new Date();
+        updates.wonAt = now;
       } else if (formState.status === '❌ ปิดดีลไม่ได้ (Closed Lost)') {
-        updates.lostAt = new Date();
+        updates.stage = 'qualified';
+        updates.lostAt = now;
+      } else if (formState.status === '⏳ รอการตัดสินใจ (Pending)') {
+        updates.stage = 'qualified';
       }
 
       await leadService.updateCustomer(customer.id || customer.phone, updates);
@@ -636,17 +665,19 @@ const LeadEntryForm = ({ customer, onBack, showToast, currentAdminId, currentAdm
                  </div>
                  <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest pl-1 italic">ผลการติดต่อ (Result)</label>
-                    <select 
+                    <CustomSelect 
                       value={formState.callTracking.remark}
                       onChange={(e) => setFormState({...formState, callTracking: {...formState.callTracking, remark: e.target.value}})}
                       className="w-full bg-white px-4 py-2.5 rounded-xl text-xs font-black border border-slate-100 outline-none shadow-sm cursor-pointer"
-                    >
-                      <option value="">เลือกสถานะการโทร...</option>
-                      <option>ไม่มีคนรับสาย</option>
-                      <option>สายไม่ว่าง / ติดสายอื่น</option>
-                      <option>สนใจขอข้อมูลเพิ่มเติม / ส่งเอกสาร</option>
-                      <option>เบอร์โทรศัพท์ไม่ถูกต้อง</option>
-                    </select>
+                      placeholder="เลือกสถานะการโทร..."
+                      options={[
+                        { value: '', label: 'เลือกสถานะการโทร...' },
+                        'ไม่มีคนรับสาย',
+                        'สายไม่ว่าง / ติดสายอื่น',
+                        'สนใจขอข้อมูลเพิ่มเติม / ส่งเอกสาร',
+                        'เบอร์โทรศัพท์ไม่ถูกต้อง'
+                      ]}
+                    />
                  </div>
                </div>
 
@@ -691,14 +722,16 @@ const LeadEntryForm = ({ customer, onBack, showToast, currentAdminId, currentAdm
                     <span className="text-sm font-black text-slate-900 leading-none uppercase tracking-widest">นัดเข้าพบ/ดูหน้างาน</span>
                  </div>
                  <div className="space-y-2">
-                    <select 
+                    <CustomSelect 
                       value={formState.visitStatus.month}
                       onChange={(e) => setFormState({...formState, visitStatus: {...formState.visitStatus, month: e.target.value}})}
                       className="w-full bg-white px-4 py-2.5 rounded-xl text-xs font-black border border-slate-100 outline-none shadow-sm cursor-pointer"
-                    >
-                      <option value="">เลือกเดือนที่สะดวกนัดพบ...</option>
-                      {['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'].map(m => <option key={m}>{m}</option>)}
-                    </select>
+                      placeholder="เลือกเดือนที่สะดวกนัดพบ..."
+                      options={[
+                        { value: '', label: 'เลือกเดือนที่สะดวกนัดพบ...' },
+                        ...['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'].map(m => ({ value: m, label: m }))
+                      ]}
+                    />
                  </div>
                  <div className="md:col-span-2">
                     <input 
@@ -728,16 +761,18 @@ const LeadEntryForm = ({ customer, onBack, showToast, currentAdminId, currentAdm
                   <div>
                      <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2 pl-1">3. บันทึกผลการปิดดีล (Closing Record)</label>
                      <div className="relative">
-                        <select 
-                          value={formState.status}
-                          onChange={(e) => setFormState({...formState, status: e.target.value})}
-                          className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-900 font-black text-sm outline-none focus:border-primary/20 appearance-none shadow-inner cursor-pointer"
-                        >
-                          <option value="">เลือกผลการปิดดีล...</option>
-                          <option value="✅ ปิดดีลสำเร็จ (Closed Won)">✅ ปิดดีลสำเร็จ (Closed Won)</option>
-                          <option value="❌ ปิดดีลไม่ได้ (Closed Lost)">❌ ปิดดีลไม่ได้ (Closed Lost)</option>
-                          <option value="⏳ รอการตัดสินใจ (Pending)">⏳ รอการตัดสินใจ (Pending)</option>
-                        </select>
+                        <CustomSelect 
+                        value={formState.status}
+                        onChange={(e) => setFormState({...formState, status: e.target.value})}
+                        className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-slate-900 font-black text-sm outline-none shadow-inner"
+                        placeholder="เลือกผลการปิดดีล..."
+                        options={[
+                          { value: '', label: 'เลือกผลการปิดดีล...' },
+                          { value: '✅ ปิดดีลสำเร็จ (Closed Won)', label: '✅ ปิดดีลสำเร็จ (Closed Won)' },
+                          { value: '❌ ปิดดีลไม่ได้ (Closed Lost)', label: '❌ ปิดดีลไม่ได้ (Closed Lost)' },
+                          { value: '⏳ รอการตัดสินใจ (Pending)', label: '⏳ รอการตัดสินใจ (Pending)' }
+                        ]}
+                      />
                      </div>
                   </div>
                   

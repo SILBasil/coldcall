@@ -7,10 +7,43 @@ import {
 
 
 import { MONTHS_TRACKING, WEEKS } from '../../constants';
+import CustomSelect from '../common/CustomSelect';
 import QRCodeModal from '../common/QRCodeModal';
 import { leadService } from '../../services/leadService';
 import ContactHistory from '../common/ContactHistory';
 import HistoryCalendar from '../common/HistoryCalendar';
+
+const parseThaiDate = (dateStr) => {
+  if (!dateStr) return null;
+  if (dateStr.includes('/')) {
+    const parts = dateStr.split('/');
+    if (parts.length === 3) {
+      const d = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10) - 1;
+      let y = parseInt(parts[2], 10);
+      if (y > 2400) y = y - 543;
+      return new Date(y, m, d);
+    }
+  }
+  if (dateStr.includes('-')) {
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      const y = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10) - 1;
+      const d = parseInt(parts[2], 10);
+      return new Date(y, m, d);
+    }
+  }
+  const parsed = new Date(dateStr);
+  return isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const formatThaiDate = (dateStr) => {
+  if (!dateStr) return '-';
+  const parsed = parseThaiDate(dateStr);
+  if (!parsed) return dateStr;
+  return parsed.getDate() + '/' + (parsed.getMonth() + 1) + '/' + (parsed.getFullYear() + 543);
+};
 
 const STATUS_OPTIONS = [
   { label: 'ปิดเครื่อง / ติดต่อไม่ได้', color: 'bg-rose-100 text-rose-600 border-rose-200' },
@@ -28,6 +61,24 @@ const STATUS_OPTIONS = [
   { label: 'ติดต่อยาก / รอสายยาว', color: 'bg-yellow-300 text-slate-800 border-yellow-400' },
   { label: 'ต้องการของแถม/โปรโมชั่นพิเศษ', color: 'bg-pink-500 text-white border-pink-600' },
 ];
+
+const getTodayDate = () => {
+  const mock = localStorage.getItem('mockTodayStr');
+  if (mock) {
+    return new Date(mock);
+  }
+  return new Date();
+};
+
+const getYearOptions = () => {
+  const currentYear = getTodayDate().getFullYear();
+  const currentThaiYear = currentYear + 543;
+  const yearOptions = [];
+  for (let y = currentThaiYear - 5; y <= currentThaiYear + 5; y++) {
+    yearOptions.push({ value: y, label: 'พ.ศ. ' + y + ' (' + (y - 543) + ')' });
+  }
+  return yearOptions;
+};
 
 const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, currentAdminId, currentAdminName }) => {
   const [gridData, setGridData] = useState(customer.gridData || {});
@@ -49,6 +100,9 @@ const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, 
     amount: customer.freqAmount || 1, 
     unit: customer.freqUnit || 'สัปดาห์' 
   });
+  const [selectedYear, setSelectedYear] = useState(() => getTodayDate().getFullYear() + 543);
+  const [calYear, setCalYear] = useState(() => getTodayDate().getFullYear() + 543);
+  const [calMonth, setCalMonth] = useState(() => getTodayDate().getMonth());
   const openedAtRef = React.useRef(Date.now());
 
   // Calculate next follow-up week based on latest activity in grid
@@ -72,7 +126,7 @@ const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, 
     let baseline = latestOrderWeeks !== -1 ? latestOrderWeeks : latestActivityWeeks;
     
     if (baseline === -1) {
-      const now = new Date();
+      const now = getTodayDate();
       const day = now.getDate();
       const curWeekIdx = day <= 7 ? 0 : day <= 14 ? 1 : day <= 21 ? 2 : 3;
       baseline = now.getMonth() * 4 + curWeekIdx;
@@ -95,23 +149,7 @@ const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, 
     }
   }, [gridData, freq]);
 
-  // Pre-tick current week followup if not already ticked (Visual feedback for current work)
-  useEffect(() => {
-    const now = new Date();
-    const curMonth = MONTHS_TRACKING[now.getMonth()];
-    const day = now.getDate();
-    const curWeek = day <= 7 ? 1 : day <= 14 ? 2 : day <= 21 ? 3 : 4;
-    const keyF = `${curMonth}-${curWeek}-followup`;
-    const keyO = `${curMonth}-${curWeek}-order`;
-    
-    let updates = {};
-    if (!gridData[keyF]) updates[keyF] = true;
-    if (!gridData[keyO]) updates[keyO] = true;
-    
-    if (Object.keys(updates).length > 0) {
-      setGridData(prev => ({ ...prev, ...updates }));
-    }
-  }, []);
+  // Removed automatic pre-ticking on mount as requested.
 
 
   // Log 'open customer (Retention)' on mount and fetch history
@@ -144,19 +182,25 @@ const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, 
       const duration = Math.floor((Date.now() - openedAtRef.current) / 1000);
       
       let updatedGrid = { ...gridData };
-      let updatedLastOrderDate = customer.lastOrderDate;
+      let updatedLastOrderDate = customer.lastOrderDate || null;
 
-      // Always mark the current week as "Followed up" (Checked) when saving
-      const now = new Date();
+      // Mark the current week and day as "Followed up" (Checked) when saving
+      const now = getTodayDate();
       const curMonth = MONTHS_TRACKING[now.getMonth()];
       const day = now.getDate();
       const curWeek = day <= 7 ? 1 : day <= 14 ? 2 : day <= 21 ? 3 : 4;
       
       updatedGrid[`${curMonth}-${curWeek}-followup`] = true;
+      updatedGrid[`${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}-followup`] = true;
 
       // Additionally mark as "Ordered" if status includes 'สั่งซื้อซ้ำ'
       if (status && status.includes('สั่งซื้อซ้ำ')) {
         updatedGrid[`${curMonth}-${curWeek}-order`] = true;
+        updatedGrid[`${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}-order`] = true;
+      }
+
+      // If the current week is marked as ordered in the grid, update lastOrderDate
+      if (updatedGrid[`${curMonth}-${curWeek}-order`]) {
         updatedLastOrderDate = now.toLocaleDateString('th-TH');
       }
 
@@ -169,7 +213,7 @@ const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, 
         freqUnit: freq.unit,
         lineId: socialLinks.lineId,
         facebookUrl: socialLinks.facebookUrl,
-        lastCallDate: new Date().toLocaleDateString('th-TH'),
+        lastCallDate: getTodayDate().toLocaleDateString('th-TH'),
         lastOrderDate: updatedLastOrderDate
       });
 
@@ -275,7 +319,7 @@ const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, 
     <div className="space-y-4 animate-in fade-in duration-500 pb-5">
       {/* Profile Header - Premium Style */}
       <div className="bg-white rounded-3xl shadow-sm p-4 flex flex-wrap items-center justify-between border-l-[6px] border-emerald-500 gap-4 group">
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-2">
           {/* Back Button on the far left */}
           <button
               onClick={onBack}
@@ -451,14 +495,14 @@ const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, 
                  logs={historyLogs}
                  onClose={() => setIsHistoryOpen(false)}
                  onRestore={(snapshot) => {
-                   if (snapshot.gridData) setGridData(snapshot.gridData);
-                   if (snapshot.status) setStatus(snapshot.status);
-                   if (snapshot.type) setType(snapshot.type);
-                   if (snapshot.remark) setRemark(snapshot.remark);
-                   if (snapshot.freqAmount) setFreq(prev => ({ ...prev, amount: snapshot.freqAmount }));
-                   if (snapshot.freqUnit) setFreq(prev => ({ ...prev, unit: snapshot.freqUnit }));
-                   showToast("ดึงข้อมูลย้อนหลังจากประวัติสำเร็จ");
-                   setIsHistoryOpen(false);
+                    if (snapshot.gridData) setGridData(snapshot.gridData);
+                    if (snapshot.status) setStatus(snapshot.status);
+                    if (snapshot.type) setType(snapshot.type);
+                    if (snapshot.remark) setRemark(snapshot.remark);
+                    if (snapshot.freqAmount) setFreq(prev => ({ ...prev, amount: snapshot.freqAmount }));
+                    if (snapshot.freqUnit) setFreq(prev => ({ ...prev, unit: snapshot.freqUnit }));
+                    showToast("ดึงข้อมูลย้อนหลังจากประวัติสำเร็จ");
+                    setIsHistoryOpen(false);
                  }}
                />
              )}
@@ -467,131 +511,488 @@ const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, 
 
        <div className={`grid grid-cols-1 lg:grid-cols-12 gap-4 items-start ${readonly && 'opacity-80 pointer-events-none'}`}>
          <div className="lg:col-span-8 space-y-4">
-           <div className="bg-white rounded-3xl shadow-sm p-4 grid grid-cols-1 md:grid-cols-2 gap-4 relative border border-slate-100">
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1 pl-1 italic">กลุ่มลูกค้า</label>
-                <select
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-xl font-black text-[12px] outline-none focus:border-primary transition-all cursor-pointer"
-                  value={type}
-                  onChange={(e) => setType(e.target.value)}
-                >
-                  <option>ยังไม่เคยเปิดบิล</option>
-                  <option>เคยสั่งซื้อซ้ำ</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1 pl-1 italic">สถานะการติดตาม</label>
-                <select
-                  className={`w-full px-3 py-1.5 border rounded-xl font-black text-[12px] outline-none transition-all cursor-pointer ${currentStatusStyle}`}
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value)}
-                >
-                  {STATUS_OPTIONS.map(opt => (
-                    <option key={opt.label} value={opt.label} className="bg-white text-slate-900">{opt.label}</option>
-                  ))}
-                </select>
-              </div>
-           </div>
-
-           <div className="bg-white rounded-3xl shadow-sm overflow-hidden border border-slate-100">
-             <div className="bg-slate-50/50 px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
-               <div className="flex items-center gap-2">
-                 <Calendar size={14} className="text-primary" />
-                 <div className="text-[11px] font-black text-slate-900 tracking-[0.1em] uppercase italic">ตารางวางแผนการติดตามลูกค้า (12 เดือน)</div>
-               </div>
-               <div className="flex gap-4 text-[9px] font-black uppercase tracking-widest text-slate-600 italic">
-                 <span className="flex items-center gap-1.5"><Check size={10} className="text-primary"/> CHECK</span>
-                 <span className="flex items-center gap-1.5"><ShoppingBag size={10} className="text-emerald-500"/> ORDER</span>
+           {/* Warnings for Lost Count */}
+           {(customer.lostCount >= 3) && (
+             <div className="bg-rose-50 border-l-4 border-rose-500 p-4 rounded-xl shadow-sm animate-pulse mb-4">
+               <div className="flex items-center gap-3">
+                 <AlertCircle className="text-rose-600 h-5 w-5" />
+                 <div>
+                   <h3 className="text-rose-800 font-black text-sm">ต้องให้ความสำคัญและเข้มงวดในการติดตามเป็นพิเศษ!</h3>
+                   <p className="text-rose-600 text-xs font-bold mt-0.5">ลูกค้ารายนี้เคยเป็นลูกค้าหายสะสมมาแล้ว {customer.lostCount} ครั้ง</p>
+                 </div>
                </div>
              </div>
-             <div className="overflow-x-auto overflow-y-auto max-h-[450px]">
-               <table className="w-full border-separate border-spacing-0">
-                 <thead className="sticky top-0 z-20">
-                   <tr className="text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-50/80">
-                     <th className="sticky top-0 left-0 z-30 px-4 py-2 text-left border-b border-r border-slate-100 bg-slate-50 w-24">Month</th>
-                     {WEEKS.map(w => (
-                       <th key={w} className="px-2 py-2 border-b border-r border-slate-100 last:border-r-0">WK {w}</th>
-                     ))}
-                   </tr>
-                 </thead>
-                 <tbody className="divide-y divide-slate-50">
-                   {MONTHS_TRACKING.map(month => (
-                     <tr key={month} className="hover:bg-slate-50/30 transition-colors">
-                       <td className="sticky left-0 z-10 px-4 py-2 border-r border-slate-50 bg-white font-black text-slate-800 text-[12px] italic">{month}</td>
-                       {WEEKS.map(week => (
-                         <td key={week} className="p-2 border-r border-slate-50 last:border-r-0">
-                           <div className="flex items-center justify-center gap-1.5">
-                              <button
-                                onClick={() => toggleGrid(month, week, 'followup')}
-                                className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all border border-solid cursor-pointer
-                                  ${gridData[`${month}-${week}-followup`] ? 'bg-primary border-primary text-white shadow-sm' : 'bg-white border-slate-100 text-slate-200 hover:border-primary/20'}`}
-                                style={nextFollowUp?.month === month && nextFollowUp?.week === week ? {
-                                  boxShadow: '0 0 0 4px #fbbf24, 0 0 20px rgba(251, 191, 36, 0.8)',
-                                  transform: 'scale(1.15)',
-                                  zIndex: 10,
-                                  borderColor: '#fbbf24'
-                                } : {}}
-                                title={nextFollowUp?.month === month && nextFollowUp?.week === week ? 'รอบการติดตามครั้งถัดไป' : ''}
-                              >
-                                <Check size={12} strokeWidth={3} />
-                              </button>
-                              <button
-                                onClick={() => toggleGrid(month, week, 'order')}
-                                className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all border border-solid cursor-pointer ${gridData[`${month}-${week}-order`] ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm' : 'bg-white border-slate-100 text-slate-200 hover:border-emerald-500/20'}`}
-                              >
-                                <ShoppingBag size={12} strokeWidth={2} />
-                              </button>
+           )}
+           {(customer.lostCount > 0 && customer.lostCount < 3) && (
+             <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-xl shadow-sm mb-4">
+               <div className="flex items-center gap-3">
+                 <AlertCircle className="text-amber-600 h-5 w-5" />
+                 <div>
+                   <h3 className="text-amber-800 font-black text-sm">ลูกค้าคนนี้เคยเป็นลูกค้าหายสะสมมาแล้ว {customer.lostCount} ครั้ง</h3>
+                 </div>
+               </div>
+             </div>
+           )}
+
+             {/* Interactive Calendar Tracker */}
+             {(() => {
+                const thaiMonths = [
+                  'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+                  'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+                ];
+                
+                const adYear = calYear - 543;
+                const daysInMonth = new Date(adYear, calMonth + 1, 0).getDate();
+                const standardDay = new Date(adYear, calMonth, 1).getDay(); // 0 is Sunday, 1 is Monday, etc.
+                
+                // Correct Monday-start day offset: Monday is 0, Tuesday is 1, ..., Sunday is 6
+                const firstDayIndex = standardDay === 0 ? 6 : standardDay - 1;
+                
+                const daysArray = [];
+                for (let i = 0; i < firstDayIndex; i++) {
+                  daysArray.push(null);
+                }
+                for (let d = 1; d <= daysInMonth; d++) {
+                  daysArray.push(d);
+                }
+
+                // Pad end to ensure exact multiples of 7 elements per week row
+                const remainder = daysArray.length % 7;
+                if (remainder > 0) {
+                  const pad = 7 - remainder;
+                  for (let i = 0; i < pad; i++) {
+                    daysArray.push(null);
+                  }
+                }
+
+                // Chunk days into weeks (each week has 7 cells)
+                const calendarWeeks = [];
+                for (let i = 0; i < daysArray.length; i += 7) {
+                  calendarWeeks.push(daysArray.slice(i, i + 7));
+                }
+
+                // Parse latest contact dates to YYYY-MM-DD
+                const getFormattedDateKey = (dateStr) => {
+                  const parsed = parseThaiDate(dateStr);
+                  if (!parsed) return null;
+                  const y = parsed.getFullYear();
+                  const m = (parsed.getMonth() + 1).toString().padStart(2, '0');
+                  const d = parsed.getDate().toString().padStart(2, '0');
+                  return y + "-" + m + "-" + d;
+                };
+
+                const lastCallKey = getFormattedDateKey(customer.lastCallDate);
+                const lastOrderKey = getFormattedDateKey(customer.lastOrderDate);
+                
+                const getTargetMonthAndWeek = (weekIdx) => {
+                  let firstMondayDay = 1;
+                  while (new Date(adYear, calMonth, firstMondayDay).getDay() !== 1) {
+                    firstMondayDay++;
+                  }
+                  const firstMondayRowIdx = calendarWeeks.findIndex(w => w.includes(firstMondayDay));
+                  
+                  if (weekIdx < firstMondayRowIdx) {
+                    let targetMonthIdx = calMonth - 1;
+                    let targetYear = calYear;
+                    if (targetMonthIdx < 0) {
+                      targetMonthIdx = 11;
+                      targetYear -= 1;
+                    }
+                    const targetMonthName = thaiMonths[targetMonthIdx];
+                    return {
+                      monthName: targetMonthName,
+                      weekNum: 4,
+                      isPrevMonth: true,
+                      label: targetMonthName.slice(0, 3) + " (W4)"
+                    };
+                  } else {
+                    const weekNum = Math.min(4, weekIdx - firstMondayRowIdx + 1);
+                    return {
+                      monthName: thaiMonths[calMonth],
+                      weekNum,
+                      isPrevMonth: false,
+                      label: "W" + weekNum
+                    };
+                  }
+                };
+
+                const handleToggleFollowup = (day, weekIdx, isFollowed) => {
+                  if (readonly) return;
+                  const { monthName, weekNum } = getTargetMonthAndWeek(weekIdx);
+                  const dayStr = day.toString().padStart(2, '0');
+                  const monthStr = (calMonth + 1).toString().padStart(2, '0');
+                  const fKey = adYear + "-" + monthStr + "-" + dayStr + "-followup";
+                  const fWeekKey = monthName + "-" + weekNum + "-followup";
+                  const oWeekKey = monthName + "-" + weekNum + "-order";
+                  
+                  const newValue = !isFollowed;
+                  
+                  setGridData(prev => {
+                    const updated = { ...prev };
+                    if (newValue) {
+                      updated[fKey] = true;
+                      updated[fWeekKey] = true;
+                    } else {
+                      updated[fKey] = false;
+                      updated[fWeekKey] = false;
+                      const week = calendarWeeks[weekIdx];
+                      week.forEach(d => {
+                        if (d !== null) {
+                          updated[adYear + "-" + monthStr + "-" + d.toString().padStart(2, '0') + "-followup"] = false;
+                        }
+                      });
+                    }
+                    
+                    // Update frequency logic
+                    const hasOrder = updated[oWeekKey] || false;
+                    let delta = 0;
+                    if (newValue && !hasOrder) delta = 1;
+                    if (!newValue && !hasOrder) delta = -1;
+                    if (delta !== 0) {
+                      setFreq(prevFreq => {
+                        let newAmount = prevFreq.amount + delta;
+                        let newUnit = prevFreq.unit;
+                        if (delta > 0) {
+                          if (newUnit === 'สัปดาห์' && newAmount > 4) { newAmount = 1; newUnit = 'เดือน'; }
+                         } else {
+                           if (newAmount < 1) { if (newUnit === 'เดือน') { newAmount = 4; newUnit = 'สัปดาห์'; } else { newAmount = 1; } }
+                         }
+                         return { amount: newAmount, unit: newUnit };
+                       });
+                     }
+                     return updated;
+                   });
+                 };
+
+                 const handleToggleOrder = (day, weekIdx, isOrdered) => {
+                   if (readonly) return;
+                   const { monthName, weekNum } = getTargetMonthAndWeek(weekIdx);
+                   const dayStr = day.toString().padStart(2, '0');
+                   const monthStr = (calMonth + 1).toString().padStart(2, '0');
+                   const oKey = adYear + "-" + monthStr + "-" + dayStr + "-order";
+                   const fWeekKey = monthName + "-" + weekNum + "-followup";
+                   const oWeekKey = monthName + "-" + weekNum + "-order";
+                   
+                   const newValue = !isOrdered;
+                   
+                   setGridData(prev => {
+                     const updated = { ...prev };
+                     if (newValue) {
+                       updated[oKey] = true;
+                       updated[oWeekKey] = true;
+                     } else {
+                       updated[oKey] = false;
+                       updated[oWeekKey] = false;
+                       const week = calendarWeeks[weekIdx];
+                       week.forEach(d => {
+                         if (d !== null) {
+                           updated[adYear + "-" + monthStr + "-" + d.toString().padStart(2, '0') + "-order"] = false;
+                         }
+                       });
+                     }
+                     
+                     // Update frequency logic
+                     const hasFollowup = updated[fWeekKey] || false;
+                     let delta = 0;
+                     if (newValue && hasFollowup) delta = -1;
+                     if (!newValue && hasFollowup) delta = 1;
+                     if (delta !== 0) {
+                       setFreq(prevFreq => {
+                         let newAmount = prevFreq.amount + delta;
+                         let newUnit = prevFreq.unit;
+                         if (delta > 0) {
+                           if (newUnit === 'สัปดาห์' && newAmount > 4) { newAmount = 1; newUnit = 'เดือน'; }
+                         } else {
+                           if (newAmount < 1) { if (newUnit === 'เดือน') { newAmount = 4; newUnit = 'สัปดาห์'; } else { newAmount = 1; } }
+                         }
+                         return { amount: newAmount, unit: newUnit };
+                       });
+                     }
+                     return updated;
+                   });
+                 };
+                 
+                 const handlePrevMonth = () => {
+                   if (calMonth === 0) {
+                     setCalMonth(11);
+                     setCalYear(prev => prev - 1);
+                   } else {
+                     setCalMonth(prev => prev - 1);
+                   }
+                 };
+                 
+                 const handleNextMonth = () => {
+                   if (calMonth === 11) {
+                     setCalMonth(0);
+                     setCalYear(prev => prev + 1);
+                   } else {
+                     setCalMonth(prev => prev + 1);
+                   }
+                 };
+
+                 const today = new Date();
+                 const isCurrentMonthYear = today.getFullYear() === adYear && today.getMonth() === calMonth;
+                 const todayDate = today.getDate();
+
+                 return (
+                   <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm space-y-4 animate-in fade-in duration-300 font-sans text-left">
+                     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                       <div className="flex items-center gap-2">
+                         <Calendar size={15} className="text-primary animate-pulse" />
+                         <span className="text-xs font-black text-slate-800 uppercase tracking-wider">ไอเดียที่ 2: ปฏิทินบันทึกรายวัน (Calendar Tracker)</span>
+                       </div>
+                       
+                       <div className="flex items-center gap-2.5">
+                         <div className="flex items-center bg-slate-50 border border-slate-100 rounded-xl overflow-hidden shadow-inner">
+                           <button
+                             type="button"
+                             onClick={handlePrevMonth}
+                             className="px-2.5 py-1.5 hover:bg-slate-100 text-slate-600 transition-colors border-none cursor-pointer"
+                           >
+                             <ChevronLeft size={14} />
+                           </button>
+                           <div className="px-3 text-[11px] font-black text-slate-800 min-w-[110px] text-center italic">
+                             {thaiMonths[calMonth]} {calYear}
                            </div>
-                         </td>
-                       ))}
-                     </tr>
-                   ))}
-                 </tbody>
-               </table>
-             </div>
-           </div>
-         </div>
+                           <button
+                             type="button"
+                             onClick={handleNextMonth}
+                             className="px-2.5 py-1.5 hover:bg-slate-100 text-slate-600 transition-colors border-none cursor-pointer"
+                           >
+                             <ChevronLeft size={14} style={{ transform: 'rotate(180deg)' }} />
+                           </button>
+                         </div>
 
-         <div className="lg:col-span-4 space-y-4">
+                         <div className="flex items-center gap-1.5">
+                           <CustomSelect
+                             value={calMonth}
+                             onChange={(e) => setCalMonth(parseInt(e.target.value))}
+                             className="py-1 px-2 text-[10px] bg-white border border-slate-100 rounded-lg min-w-[90px]"
+                             options={thaiMonths.map((m, idx) => ({ value: idx, label: m }))}
+                           />
+                           <CustomSelect
+                             value={calYear}
+                             onChange={(e) => setCalYear(parseInt(e.target.value))}
+                             containerClassName="min-w-[130px] w-[130px]"
+                             className="py-1 px-2 text-[10px] bg-white border border-slate-100 rounded-lg"
+                             options={getYearOptions()}
+                           />
+                         </div>
+                       </div>
+                     </div>
+
+                     <div className="grid grid-cols-8 gap-1.5 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 py-1.5 rounded-xl border border-slate-100">
+                       <div className="text-slate-500 border-r border-slate-200">สัปดาห์</div>
+                       <div>จ.</div>
+                       <div>อ.</div>
+                       <div>พ.</div>
+                       <div>พฤ.</div>
+                       <div>ศ.</div>
+                       <div className="text-rose-500">ส.</div>
+                       <div className="text-rose-500">อา.</div>
+                     </div>
+
+                     <div className="grid grid-cols-8 gap-1.5">
+                       {calendarWeeks.map((week, weekIdx) => {
+                         const target = getTargetMonthAndWeek(weekIdx);
+                         return (
+                           <React.Fragment key={weekIdx}>
+                             {/* Week Row Indicator Label */}
+                             <div className="flex flex-col items-center justify-center bg-slate-50/50 border border-slate-100 rounded-xl font-black text-[9px] text-slate-500 py-2 shadow-inner min-h-[80px]">
+                               <span className="opacity-65 text-[7px] uppercase tracking-wider leading-none">WEEK</span>
+                               <span className="text-slate-800 text-[12px] font-black italic mt-0.5">{target.label}</span>
+                             </div>
+
+                             {/* 7 Days of this week */}
+                             {week.map((day, idx) => {
+                               if (day === null) {
+                                 return <div key={"empty-" + weekIdx + "-" + idx} className="rounded-xl border border-transparent bg-slate-50/20 min-h-[80px]" />;
+                               }
+
+                               const dayStr = day.toString().padStart(2, '0');
+                               const monthStr = (calMonth + 1).toString().padStart(2, '0');
+                               const keyDate = adYear + "-" + monthStr + "-" + dayStr;
+                               
+                               const fKey = keyDate + "-followup";
+                               const oKey = keyDate + "-order";
+                               
+                               const fWeekKey = target.monthName + "-" + target.weekNum + "-followup";
+                               const oWeekKey = target.monthName + "-" + target.weekNum + "-order";
+                               
+                               const getDayFollowupState = (d) => {
+                                 if (d === null) return false;
+                                 const dStr = d.toString().padStart(2, '0');
+                                 const kDate = adYear + "-" + monthStr + "-" + dStr;
+                                 const dailyVal = gridData[kDate + "-followup"];
+                                 if (dailyVal !== undefined) return dailyVal;
+                                 return lastCallKey && kDate === lastCallKey;
+                               };
+                               
+                               const getDayOrderState = (d) => {
+                                 if (d === null) return false;
+                                 const dStr = d.toString().padStart(2, '0');
+                                 const kDate = adYear + "-" + monthStr + "-" + dStr;
+                                 const dailyVal = gridData[kDate + "-order"];
+                                 if (dailyVal !== undefined) return dailyVal;
+                                 return lastOrderKey && kDate === lastOrderKey;
+                               };
+                               
+                               const hasDailyFollowup = getDayFollowupState(day);
+                               const weekFollowupVal = gridData[fWeekKey] || false;
+                               const hasDailyFollowupInWeek = week.some(d => getDayFollowupState(d));
+                               const firstNonNullDay = week.find(d => d !== null);
+                               const isFollowed = hasDailyFollowup || (!hasDailyFollowupInWeek && weekFollowupVal && day === firstNonNullDay);
+                               
+                               const hasDailyOrder = getDayOrderState(day);
+                               const weekOrderVal = gridData[oWeekKey] || false;
+                               const hasDailyOrderInWeek = week.some(d => getDayOrderState(d));
+                               const isOrdered = hasDailyOrder || (!hasDailyOrderInWeek && weekOrderVal && day === firstNonNullDay);
+                               
+                               const isToday = isCurrentMonthYear && day === todayDate;
+
+                               return (
+                                 <div 
+                                   key={"day-" + day}
+                                   className={"rounded-xl border p-2 flex flex-col justify-between transition-all duration-300 relative group min-h-[80px] " + (isToday ? 'bg-amber-50/60 border-amber-300 shadow-sm ring-2 ring-amber-200' : 'bg-white border-slate-100 hover:border-slate-300')}
+                                 >
+                                   <div className="flex justify-between items-center">
+                                     <span className={"text-[13px] font-black leading-none pl-0.5 " + (isToday ? 'text-amber-800' : 'text-slate-800')}
+                                     >
+                                       {day}
+                                     </span>
+                                     {isToday && (
+                                       <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-ping absolute top-1 right-1" />
+                                     )}
+                                   </div>
+
+                                   <div className="flex gap-1.5 justify-center mt-2">
+                                     <button
+                                       type="button"
+                                       onClick={() => handleToggleFollowup(day, weekIdx, isFollowed)}
+                                       className={"w-8 h-8 rounded-lg flex items-center justify-center transition-all border border-solid cursor-pointer active:scale-90 " + (isFollowed ? 'bg-primary border-primary text-white shadow-md shadow-primary/20' : 'bg-slate-50 border-slate-100 text-slate-300 hover:bg-slate-100 hover:text-slate-500')}
+                                       title="📞 โทรติดตามวันนี้"
+                                     >
+                                       <Check size={14} strokeWidth={3} />
+                                     </button>
+                                     <button
+                                       type="button"
+                                       onClick={() => handleToggleOrder(day, weekIdx, isOrdered)}
+                                       className={"w-8 h-8 rounded-lg flex items-center justify-center transition-all border border-solid cursor-pointer active:scale-90 " + (isOrdered ? 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-500/20' : 'bg-slate-50 border-slate-100 text-slate-300 hover:bg-slate-100 hover:text-slate-500')}
+                                       title="🛍️ ลูกค้าสั่งซื้อซ้ำวันนี้"
+                                     >
+                                       <ShoppingBag size={12} strokeWidth={2.5} />
+                                     </button>
+                                   </div>
+                                 </div>
+                               );
+                             })}
+                           </React.Fragment>
+                         );
+                       })}
+                     </div>
+
+                    <div className="flex items-center gap-2 bg-slate-50 p-2.5 rounded-2xl border border-slate-100 text-[10px] font-black text-slate-500">
+                      <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                      <span>💡 ใช้งานง่าย: สามารถกดเปลี่ยนเดือนด้านบน แล้วเลือกติ๊กบันทึกการติดตาม (📞) หรือสั่งซื้อ (🛍️) ที่ตรงกับวันที่ติดต่อลูกค้าจริงได้ทันที</span>
+                    </div>
+                  </div>
+                );
+             })()}
+          </div>
+<div className="lg:col-span-4 space-y-4">
            <div className="bg-white rounded-3xl shadow-sm p-4 border-t-[6px] border-primary space-y-4">
              <div className="flex items-center gap-2 border-b border-slate-50 pb-2">
                 <HistoryIcon size={14} className="text-primary" />
                 <div className="text-[10px] font-black text-slate-900 uppercase tracking-widest italic">Tracking History</div>
              </div>
 
-             <div className="grid grid-cols-2 gap-2">
-               <div className="bg-slate-50/50 rounded-xl p-2.5 border border-slate-100 shadow-inner">
-                 <label className="block text-[9px] font-black text-slate-600 uppercase mb-1 italic">Last Call</label>
-                 <div className="text-[11px] font-black text-slate-800 tracking-tight">{customer.lastCallDate || '-'}</div>
-               </div>
-               <div className="bg-slate-50/50 rounded-xl p-2.5 border border-slate-100 shadow-inner">
-                 <label className="block text-[9px] font-black text-slate-600 uppercase mb-1 italic">Last Order</label>
-                 <div className="text-[11px] font-black text-slate-800 tracking-tight">{customer.lastOrderDate || '-'}</div>
-               </div>
+             <div className="grid grid-cols-1 gap-2">
+                <div>
+                  <label className="text-[9px] font-black text-slate-600 uppercase tracking-widest block mb-1 pl-1 italic">กลุ่มลูกค้า</label>
+                   <CustomSelect
+                     value={type}
+                     onChange={(e) => setType(e.target.value)}
+                     className="w-full px-3 py-2 text-[11px]"
+                     options={['ยังไม่เคยเปิดบิล', 'เคยสั่งซื้อซ้ำ']}
+                   />
+                </div>
+                <div>
+                  <label className="text-[9px] font-black text-slate-600 uppercase tracking-widest block mb-1 pl-1 italic">สถานะการติดตาม</label>
+                   <CustomSelect
+                     value={status}
+                     onChange={(e) => setStatus(e.target.value)}
+                     className="w-full px-3 py-2 text-[11px]"
+                     options={STATUS_OPTIONS.map(opt => ({ value: opt.label, label: opt.label, color: opt.color }))}
+                   />
+                </div>
              </div>
 
              <div className="grid grid-cols-2 gap-2">
                <div className="bg-slate-50/50 rounded-xl p-2.5 border border-slate-100 shadow-inner">
-                 <label className="block text-[9px] font-black text-slate-600 uppercase mb-1 italic">FREQ (Amt)</label>
-                 <input 
-                   type="number" 
-                   value={freq.amount}
-                   onChange={(e) => setFreq({ ...freq, amount: parseInt(e.target.value) || 0 })}
-                   className="w-full bg-transparent text-[11px] font-black outline-none border-b border-primary/20 focus:border-primary text-slate-800"
-                 />
+                 <label className="block text-[9px] font-black text-slate-600 uppercase mb-1 italic">Last Call</label>
+                 <div className="text-[11px] font-black text-slate-800 tracking-tight">{formatThaiDate(customer.lastCallDate)}</div>
                </div>
                <div className="bg-slate-50/50 rounded-xl p-2.5 border border-slate-100 shadow-inner">
-                 <label className="block text-[9px] font-black text-slate-600 uppercase mb-1 italic">Unit</label>
-                 <select 
-                   className="w-full bg-transparent text-[11px] font-black outline-none cursor-pointer text-slate-800"
-                   value={freq.unit}
-                   onChange={(e) => setFreq({ ...freq, unit: e.target.value })}
-                 >
-                   <option value="สัปดาห์">สัปดาห์</option>
-                   <option value="เดือน">เดือน</option>
-                 </select>
+                 <label className="block text-[9px] font-black text-slate-600 uppercase mb-1 italic">Last Order</label>
+                 <div className="text-[11px] font-black text-slate-800 tracking-tight">{formatThaiDate(customer.lastOrderDate)}</div>
                </div>
              </div>
+
+             
+             {(() => {
+                const orderCount = Object.keys(gridData || {}).filter(k => k.endsWith('-order') && gridData[k] === true).length;
+                let isFreqLocked = orderCount < 2;
+                let unlockDateStr = '';
+                
+                if (orderCount >= 2 && customer.freqCalculatedAt) {
+                  const calculatedDate = customer.freqCalculatedAt.toDate ? customer.freqCalculatedAt.toDate() : new Date(customer.freqCalculatedAt);
+                  const threeMonthsLater = new Date(calculatedDate);
+                  threeMonthsLater.setMonth(threeMonthsLater.getMonth() + 3);
+                  if (getTodayDate() < threeMonthsLater) {
+                    isFreqLocked = true;
+                    unlockDateStr = threeMonthsLater.toLocaleDateString('th-TH');
+                  }
+                }
+
+                return (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className={`rounded-xl p-2.5 border shadow-inner transition-all duration-300 ${isFreqLocked ? 'bg-slate-100/50 border-slate-200 opacity-80' : 'bg-slate-50/50 border-slate-100'}`}>
+                        <label className="block text-[9px] font-black text-slate-600 uppercase mb-1 italic">FREQ (Amt)</label>
+                        <input 
+                          type="number" 
+                          value={freq.amount}
+                          disabled={isFreqLocked}
+                          onChange={(e) => setFreq({ ...freq, amount: parseInt(e.target.value) || 0 })}
+                          className={`w-full bg-transparent text-[11px] font-black outline-none border-b focus:border-primary text-slate-800 disabled:text-slate-400 disabled:cursor-not-allowed ${isFreqLocked ? 'border-transparent' : 'border-primary/20'}`}
+                        />
+                      </div>
+                      <div className={`rounded-xl p-2.5 border shadow-inner transition-all duration-300 ${isFreqLocked ? 'bg-slate-100/50 border-slate-200 opacity-80' : 'bg-slate-50/50 border-slate-100'}`}>
+                        <label className="block text-[9px] font-black text-slate-600 uppercase mb-1 italic">Unit</label>
+                        <CustomSelect 
+                          className="!bg-transparent !border-none !shadow-none !pl-0 !py-0 text-[11px]"
+                          value={freq.unit}
+                          disabled={isFreqLocked}
+                          onChange={(e) => setFreq({ ...freq, unit: e.target.value })}
+                          options={['สัปดาห์', 'เดือน']}
+                        />
+                      </div>
+                    </div>
+                    <div className="text-[9px] font-bold mt-1 pl-1 text-left">
+                      {isFreqLocked ? (
+                        <span className="text-amber-500 flex items-center gap-1">
+                          🔒 {orderCount < 2 ? `สั่งซื้อสะสม: ${orderCount}/2 ครั้ง (ต้องสั่งซื้อ 2 ครั้งเพื่อแก้ไขรอบการติดตาม)` : `ล็อคความถี่ 3 เดือน (ปลดล็อควันที่ ${unlockDateStr})`}
+                        </span>
+                      ) : (
+                        <span className="text-emerald-600 flex items-center gap-1 font-extrabold">
+                          🔓 ปลดล็อกการตั้งรอบการติดตามแล้ว (สั่งซื้อสะสม: {orderCount} ครั้ง)
+                        </span>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+
 
              <div className="space-y-1.5">
                <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest italic pl-1">Latest Remark</label>
@@ -604,35 +1005,32 @@ const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, 
              </div>
 
              {!readonly && (
-               <div className="space-y-3 pt-2">
+               <div className="flex gap-2 pt-2">
+                 <button
+                   type="button"
+                   onClick={() => {
+                     setGridData(customer.gridData || {});
+                     setStatus(customer.status || 'เสนอขอตัวอย่างสินค้า');
+                     setType(customer.type || 'ยังไม่เคยเปิดบิล');
+                     setRemark(customer.remark || '');
+                     setFreq({ amount: customer.freqAmount || 1, unit: customer.freqUnit || 'สัปดาห์' });
+                     showToast("ล้างข้อมูลฟอร์มเรียบร้อย");
+                   }}
+                   className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-black text-[12px] shadow-sm transition-all active:scale-95 uppercase flex items-center justify-center gap-2 cursor-pointer border-none"
+                 >
+                   <RotateCcw size={16} />
+                   <span>ล้างข้อมูล</span>
+                 </button>
                  <button
                    onClick={handleSave}
                    disabled={isSubmitting}
-                   className="w-full py-3 bg-primary hover:bg-slate-900 text-white rounded-xl font-black text-[12px] shadow transition-all active:scale-95 uppercase flex items-center justify-center gap-2 shadow-primary/20 cursor-pointer border-none"
+                   className="flex-[2] py-3 bg-primary hover:bg-slate-900 text-white rounded-xl font-black text-[12px] shadow transition-all active:scale-95 uppercase flex items-center justify-center gap-2 shadow-primary/20 cursor-pointer border-none"
                  >
                    {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                    <span>{isSubmitting ? 'SAVING...' : 'บันทึกการติดตาม'}</span>
                  </button>
                </div>
              )}
-          </div>
-
-          <div className="bg-white rounded-3xl p-4 border border-slate-100 shadow-sm space-y-4">
-             <div className="flex items-center gap-2 border-b border-slate-50 pb-2">
-                <HistoryIcon size={14} className="text-primary" />
-                <div className="text-[10px] font-black uppercase tracking-widest text-slate-900 italic">Audit Log</div>
-                {!readonly && (
-                   <button 
-                     onClick={logCall}
-                     className="ml-auto px-2 py-1 bg-slate-50 text-slate-600 border border-slate-100 rounded-lg text-[9px] font-black uppercase hover:bg-primary hover:text-white transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
-                   >
-                     <PhoneIcon size={10} /> LOG CALL
-                   </button>
-                )}
-             </div>
-             <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
-                <ContactHistory customerId={customer.id} />
-             </div>
           </div>
         </div>
       </div>

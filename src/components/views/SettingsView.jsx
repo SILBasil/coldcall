@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Users, List, Database, Plus, Trash2, X, Loader2, AlertTriangle, ShieldX, RotateCw, Palette, ChevronRight, ShoppingBag, Repeat } from 'lucide-react';
+import { Users, List, Database, Plus, Trash2, X, Loader2, AlertTriangle, ShieldX, RotateCw, Palette, ChevronRight, ShoppingBag, Repeat, Upload, FileSpreadsheet, FileDown } from 'lucide-react';
 import { leadService } from '../../services/leadService';
+import { dialog } from '../../utils/dialog';
 
 // ─── Sub Pages ───────────────────────────────────────────────────────────────
 
@@ -26,7 +27,7 @@ const AdminsPage = () => {
       setAdminForm({ name: admin.name, username: admin.username, password: admin.password, color: admin.color || '#374151' });
     } else {
       setEditingAdmin(null);
-      setAdminForm({ name: '', username: '', password: '', color: '#' + Math.floor(Math.random()*16777215).toString(16) });
+      setAdminForm({ name: '', username: '', password: '', color: '#' + Math.floor(Math.random() * 16777215).toString(16) });
     }
     setIsModalOpen(true);
   };
@@ -38,11 +39,18 @@ const AdminsPage = () => {
       else await leadService.createUser({ ...adminForm, role: 'admin' });
       setIsModalOpen(false);
       fetchData();
-    } catch (err) { alert('เกิดข้อผิดพลาด: ' + err.message); }
+    } catch (err) {
+      await dialog.alert({ title: 'เกิดข้อผิดพลาด', text: err.message, icon: 'error' });
+    }
   };
 
   const handleDeleteAdmin = async (id) => {
-    if (window.confirm('ต้องการลบบัญชีแอดมินนี้ใช่หรือไม่? ข้อมูลลูกค้าจะถูกย้ายกลับไป Unassigned')) {
+    const isConfirmed = await dialog.confirm({
+      title: 'ลบบัญชีแอดมิน?',
+      text: 'ต้องการลบบัญชีแอดมินนี้ใช่หรือไม่? ข้อมูลลูกค้าจะถูกย้ายกลับไป Unassigned',
+      isDanger: true
+    });
+    if (isConfirmed) {
       await leadService.deleteUser(id);
       fetchData();
     }
@@ -100,25 +108,25 @@ const AdminsPage = () => {
             <form onSubmit={handleSaveAdmin} className="p-6 space-y-4">
               <div className="space-y-1.5">
                 <label className="text-[10px] uppercase font-black text-slate-500 tracking-wider">ชื่อ - นามสกุล</label>
-                <input type="text" value={adminForm.name} onChange={e => setAdminForm({...adminForm, name: e.target.value})}
+                <input type="text" value={adminForm.name} onChange={e => setAdminForm({ ...adminForm, name: e.target.value })}
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="ตัวอย่าง สมชาย รักสงบ" required />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[10px] uppercase font-black text-slate-500 tracking-wider">ชื่อผู้ใช้งาน (Username)</label>
-                  <input type="text" value={adminForm.username} onChange={e => setAdminForm({...adminForm, username: e.target.value})}
+                  <input type="text" value={adminForm.username} onChange={e => setAdminForm({ ...adminForm, username: e.target.value })}
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="mali@company.com" required />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] uppercase font-black text-slate-500 tracking-wider">รหัสผ่าน (Password)</label>
-                  <input type="password" value={adminForm.password} onChange={e => setAdminForm({...adminForm, password: e.target.value})}
+                  <input type="password" value={adminForm.password} onChange={e => setAdminForm({ ...adminForm, password: e.target.value })}
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="กำหนดรหัสผ่าน" required={!editingAdmin} />
                 </div>
               </div>
               <div className="space-y-1.5">
                 <label className="text-[10px] uppercase font-black text-slate-500 tracking-wider">สีประจำตัว</label>
                 <div className="flex items-center gap-3">
-                  <input type="color" value={adminForm.color} onChange={e => setAdminForm({...adminForm, color: e.target.value})} className="w-12 h-12 p-1 bg-white border border-slate-200 rounded-xl cursor-pointer font-bold text-sm" />
+                  <input type="color" value={adminForm.color} onChange={e => setAdminForm({ ...adminForm, color: e.target.value })} className="w-12 h-12 p-1 bg-white border border-slate-200 rounded-xl cursor-pointer font-bold text-sm" />
                   <div className="text-xs font-bold text-slate-500">{adminForm.color?.toUpperCase()}</div>
                 </div>
               </div>
@@ -166,14 +174,16 @@ const TopicsPage = () => {
     // Check duplicate
     const exists = topics.some(tp => tp.title.toLowerCase() === t.toLowerCase());
     if (exists) {
-      alert(`มีหัวข้อ "${t}" นี้อยู่ในระบบแล้ว`);
+      await dialog.alert({ title: 'หัวข้อซ้ำซ้อน', text: `มีหัวข้อ "${t}" นี้อยู่ในระบบแล้ว`, icon: 'warning' });
       return;
     }
     try {
       await leadService.addMasterTopic(t, false);
       setNewTopic('');
       fetchData();
-    } catch (err) { alert('เกิดข้อผิดพลาดในการเพิ่มหัวข้อ: ' + err.message); }
+    } catch (err) {
+      await dialog.alert({ title: 'เกิดข้อผิดพลาด', text: 'เกิดข้อผิดพลาดในการเพิ่มหัวข้อ: ' + err.message, icon: 'error' });
+    }
   };
 
   const handleToggleDefault = async (topic) => {
@@ -181,16 +191,25 @@ const TopicsPage = () => {
     try {
       await leadService.updateMasterTopic(topic.id, { isDefault: !topic.isDefault });
       fetchData();
-    } catch (err) { alert('เกิดข้อผิดพลาดในการอัปเดตสถานะ'); }
+    } catch (err) {
+      await dialog.alert({ title: 'เกิดข้อผิดพลาด', text: 'เกิดข้อผิดพลาดในการอัปเดตสถานะ', icon: 'error' });
+    }
     finally { setSaving(null); }
   };
 
   const handleDelete = async (topic) => {
-    if (!window.confirm(`ยืนยันการลบหัวข้อ "${topic.title}" ออกจากระบบ?`)) return;
+    const isConfirmed = await dialog.confirm({
+      title: 'ลบหัวข้อ?',
+      text: `ยืนยันการลบหัวข้อ "${topic.title}" ออกจากระบบ?`,
+      isDanger: true
+    });
+    if (!isConfirmed) return;
     try {
       await leadService.deleteMasterTopic(topic.id);
       fetchData();
-    } catch (err) { alert('เกิดข้อผิดพลาดในการลบหัวข้อ'); }
+    } catch (err) {
+      await dialog.alert({ title: 'เกิดข้อผิดพลาด', text: 'เกิดข้อผิดพลาดในการลบหัวข้อ', icon: 'error' });
+    }
   };
 
   const defaultTopics = topics.filter(t => t.isDefault);
@@ -296,6 +315,7 @@ const DataPage = () => {
   const [injecting, setInjecting] = useState(false);
   const [injectingRetention, setInjectingRetention] = useState(false);
 
+
   useEffect(() => {
     const fetchStep = async () => {
       const step = await leadService.getEvolutionStep();
@@ -310,37 +330,53 @@ const DataPage = () => {
       const nextStep = await leadService.evolveMockupLead();
       setEvolutionStep(nextStep);
     } catch (err) {
-      alert('❌ เกิดข้อผิดพลาด: ' + err.message);
+      await dialog.alert({ title: 'เกิดข้อผิดพลาด', text: err.message, icon: 'error' });
     } finally {
       setEvolving(false);
     }
   };
 
   const handleInjectMockupLeads = async () => {
-    if (!window.confirm('ต้องการนำเข้ารายชื่อลูกค้าจำลองจำนวน 15 คนที่ยังไม่ได้มอบหมายงาน ใช่หรือไม่?')) return;
+    const isConfirmed = await dialog.confirm({
+      title: 'นำเข้าข้อมูลจำลอง?',
+      text: 'ต้องการนำเข้ารายชื่อลูกค้าจำลองจำนวน 15 คนที่ยังไม่ได้มอบหมายงาน ใช่หรือไม่?'
+    });
+    if (!isConfirmed) return;
     try {
       setInjecting(true);
       const res = await leadService.injectUnassignedMockupCustomers(15);
       if (res.success) {
-        alert(`✅ นำเข้ารายชื่อลูกค้าจำลองจำนวน ${res.count} คนเสร็จเรียบร้อยแล้ว! สามารถไปที่เมนู 'มอบหมายงาน' เพื่อเลือกแอดมินผู้ดูแลได้ทันที`);
+        await dialog.alert({
+          title: 'นำเข้าข้อมูลสำเร็จ',
+          text: `นำเข้ารายชื่อลูกค้าจำลองจำนวน ${res.count} คนเสร็จเรียบร้อยแล้ว! สามารถไปที่เมนู 'มอบหมายงาน' เพื่อเลือกแอดมินผู้ดูแลได้ทันที`,
+          icon: 'success'
+        });
       }
     } catch (err) {
-      alert('❌ เกิดข้อผิดพลาด: ' + err.message);
+      await dialog.alert({ title: 'เกิดข้อผิดพลาด', text: err.message, icon: 'error' });
     } finally {
       setInjecting(false);
     }
   };
 
   const handleInjectMockupRetentionLeads = async () => {
-    if (!window.confirm('ต้องการนำเข้ารายชื่อลูกค้าประจำจำลองจำนวน 10 คนที่มีประวัติการซื้อต่างกัน (ซื้อครั้งเดียว, ซื้อซ้ำสัปดาห์เดียวกัน, ซื้อคนละวัน/สัปดาห์/เดือน) ที่ยังไม่ได้มอบหมายงาน ใช่หรือไม่?')) return;
+    const isConfirmed = await dialog.confirm({
+      title: 'นำเข้าข้อมูลประจำจำลอง?',
+      text: 'ต้องการนำเข้ารายชื่อลูกค้าประจำจำลองจำนวน 10 คนที่มีประวัติการซื้อต่างกัน (ซื้อครั้งเดียว, ซื้อซ้ำสัปดาห์เดียวกัน, ซื้อคนละวัน/สัปดาห์/เดือน) ที่ยังไม่ได้มอบหมายงาน ใช่หรือไม่?'
+    });
+    if (!isConfirmed) return;
     try {
       setInjectingRetention(true);
       const res = await leadService.injectUnassignedMockupRetentionCustomers(10);
       if (res.success) {
-        alert(`✅ นำเข้ารายชื่อลูกค้าประจำจำลองจำนวน ${res.count} คนเสร็จเรียบร้อยแล้ว! สามารถไปที่เมนู 'มอบหมายงาน > แท็บลูกค้าประจำ' เพื่อเลือกแอดมินผู้ดูแลได้ทันที`);
+        await dialog.alert({
+          title: 'นำเข้าข้อมูลสำเร็จ',
+          text: `นำเข้ารายชื่อลูกค้าประจำจำลองจำนวน ${res.count} คนเสร็จเรียบร้อยแล้ว! สามารถไปที่เมนู 'มอบหมายงาน > แท็บลูกค้าประจำ' เพื่อเลือกแอดมินผู้ดูแลได้ทันที`,
+          icon: 'success'
+        });
       }
     } catch (err) {
-      alert('❌ เกิดข้อผิดพลาด: ' + err.message);
+      await dialog.alert({ title: 'เกิดข้อผิดพลาด', text: err.message, icon: 'error' });
     } finally {
       setInjectingRetention(false);
     }
@@ -348,41 +384,61 @@ const DataPage = () => {
 
 
   const handleSync = async () => {
-    if (!window.confirm('ต้องการดึงข้อมูลจาก Google Sheet ใช่หรือไม่? อาจใช้เวลา 1-2 นาที')) return;
+    const isConfirmed = await dialog.confirm({
+      title: 'ดึงข้อมูลจาก Google Sheet?',
+      text: 'ต้องการดึงข้อมูลจาก Google Sheet ใช่หรือไม่? อาจใช้เวลา 1-2 นาที'
+    });
+    if (!isConfirmed) return;
     try {
       setSyncing(true);
       const response = await fetch('/_api/sync');
       const data = await response.json();
       if (!data.success) throw new Error(data.error || 'เกิดข้อผิดพลาด');
-      alert('✅ ซิงค์ข้อมูลเรียบร้อยแล้ว!');
+      await dialog.alert({ title: 'ซิงค์สำเร็จ', text: 'ซิงค์ข้อมูลเรียบร้อยแล้ว!', icon: 'success' });
     } catch (err) {
-      alert('❌ เกิดข้อผิดพลาด: ' + err.message);
+      await dialog.alert({ title: 'เกิดข้อผิดพลาด', text: err.message, icon: 'error' });
     } finally { setSyncing(false); }
   };
 
 
   const handleMockup = async () => {
-    if (!window.confirm('ต้องการจำลองข้อมูลลูกค้าเก่าจำนวน 150 คนใช่หรือไม่?')) return;
+    const isConfirmed = await dialog.confirm({
+      title: 'จำลองข้อมูลระบบ?',
+      text: 'ต้องการจำลองข้อมูลลูกค้าเก่าจำนวน 150 คนใช่หรือไม่?'
+    });
+    if (!isConfirmed) return;
     try {
       setMocking(true);
       setMockStatus({ pct: 5, msg: 'กำลังสร้างข้อมูลจำลอง...' });
       await leadService.generateMockupData((pct, msg) => setMockStatus({ pct, msg }));
-      alert('✅ จำลองข้อมูลเรียบร้อย!');
+      await dialog.alert({ title: 'จำลองข้อมูลสำเร็จ', text: 'จำลองข้อมูลเรียบร้อย!', icon: 'success' });
     } catch (err) {
-      alert('❌ เกิดข้อผิดพลาด: ' + err.message);
+      await dialog.alert({ title: 'เกิดข้อผิดพลาด', text: err.message, icon: 'error' });
     } finally { setMocking(false); setMockStatus({ pct: 0, msg: '' }); }
   };
 
   const handleClear = async () => {
-    if (!window.confirm('⚠️ ยืนยันการลบข้อมูลลูกค้าทั้งหมด ประวัติการทำงาน และหัวข้อหรือไม่? ข้อมูลนี้ไม่สามารถกู้คืนได้!')) return;
-    const confirm2 = window.prompt("กรุณาพิมพ์ 'DELETE' เพื่อยืนยันการลบ:");
-    if (confirm2 !== 'DELETE') { alert('ยกเลิกกระบวนการ'); return; }
+    const isConfirmed = await dialog.confirm({
+      title: 'ล้างข้อมูลทั้งหมด?',
+      text: '⚠️ ยืนยันการลบข้อมูลลูกค้าทั้งหมด ประวัติการทำงาน และหัวข้อหรือไม่? ข้อมูลนี้ไม่สามารถกู้คืนได้!',
+      isDanger: true
+    });
+    if (!isConfirmed) return;
+    const confirm2 = await dialog.prompt({
+      title: 'ยืนยันการลบข้อมูลหลัก',
+      text: 'กรุณาพิมพ์ "DELETE" เพื่อยืนยันการลบ:',
+      placeholder: 'DELETE'
+    });
+    if (confirm2 !== 'DELETE') {
+      await dialog.alert({ title: 'ยกเลิก', text: 'ยกเลิกกระบวนการล้างข้อมูล', icon: 'info' });
+      return;
+    }
     try {
       setClearing(true);
       await leadService.clearProjectData();
-      alert('✅ ล้างข้อมูลในระบบเรียบร้อยแล้ว!');
+      await dialog.alert({ title: 'ล้างข้อมูลสำเร็จ', text: 'ล้างข้อมูลในระบบเรียบร้อยแล้ว!', icon: 'success' });
     } catch (err) {
-      alert('❌ เกิดข้อผิดพลาด: ' + err.message);
+      await dialog.alert({ title: 'เกิดข้อผิดพลาด', text: err.message, icon: 'error' });
     } finally { setClearing(false); }
   };
 
@@ -412,8 +468,8 @@ const DataPage = () => {
         className={`w-full py-3.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer border-none
           ${loading ? 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none' :
             buttonColor === 'emerald' ? 'bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95 shadow-emerald-100' :
-            buttonColor === 'indigo' ? 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95 shadow-indigo-100' :
-            'bg-rose-600 text-white hover:bg-rose-700 active:scale-95 shadow-rose-100'}`}>
+              buttonColor === 'indigo' ? 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95 shadow-indigo-100' :
+                'bg-rose-600 text-white hover:bg-rose-700 active:scale-95 shadow-rose-100'}`}>
         {loading ? <><Loader2 size={14} className="animate-spin" /> {loadingLabel}</> : <>{buttonLabel}</>}
       </button>
     </div>
@@ -431,17 +487,17 @@ const DataPage = () => {
         title="Evolution Mockup (จำลองพัฒนาการข้อมูล)"
         desc={
           evolutionStep === 0 ? "เริ่มต้นด้วยข้อมูลดิบในสถานะ 'ยังไม่เคยติดต่อ' (ยังไม่มีการกรองข้อมูล)" :
-          evolutionStep === 1 ? "จำลองสถานะแชทบอทคัดกรอง: ย้ายข้อมูลไปที่สถานะ 'สนใจ / ขอข้อมูลเพิ่มเติม'" :
-          evolutionStep === 2 ? "แอดมิน 'ไนซ์' รับงานและติดตามการขาย: ลูกค้าตกลงซื้อสินค้าและเข้าระบบอัตโนมัติ" :
-          evolutionStep === 3 ? "ติดตามและกระตุ้นการสั่งซื้อซ้ำ: ข้อมูลเปลี่ยนเป็นสถานะสั่งซื้อสำเร็จแล้ว" :
-          "จำลองกระบวนการ Evolution เรียบร้อยแล้ว สามารถเริ่มรอบใหม่ได้ทุกเมื่อ"
+            evolutionStep === 1 ? "จำลองสถานะแชทบอทคัดกรอง: ย้ายข้อมูลไปที่สถานะ 'สนใจ / ขอข้อมูลเพิ่มเติม'" :
+              evolutionStep === 2 ? "แอดมิน 'ไนซ์' รับงานและติดตามการขาย: ลูกค้าตกลงซื้อสินค้าและเข้าระบบอัตโนมัติ" :
+                evolutionStep === 3 ? "ติดตามและกระตุ้นการสั่งซื้อซ้ำ: ข้อมูลเปลี่ยนเป็นสถานะสั่งซื้อสำเร็จแล้ว" :
+                  "จำลองกระบวนการ Evolution เรียบร้อยแล้ว สามารถเริ่มรอบใหม่ได้ทุกเมื่อ"
         }
         buttonLabel={
           evolutionStep === 0 ? "1. จำลองการนำเข้าข้อมูลลูกค้า" :
-          evolutionStep === 1 ? "2. จำลองคัดกรองโดยแชทบอท" :
-          evolutionStep === 2 ? "3. แอดมินรับช่วงต่อและปิดการขาย" :
-          evolutionStep === 3 ? "4. จำลองระบบสั่งซื้อซ้ำ (Retention)" :
-          "🔄 เริ่มวงจรจำลองข้อมูลใหม่ (Evolution Reset)"
+            evolutionStep === 1 ? "2. จำลองคัดกรองโดยแชทบอท" :
+              evolutionStep === 2 ? "3. แอดมินรับช่วงต่อและปิดการขาย" :
+                evolutionStep === 3 ? "4. จำลองระบบสั่งซื้อซ้ำ (Retention)" :
+                  "🔄 เริ่มวงจรจำลองข้อมูลใหม่ (Evolution Reset)"
         }
         buttonColor={evolutionStep === 4 ? 'rose' : 'indigo'}
         onClick={handleEvolution}
@@ -494,6 +550,7 @@ const DataPage = () => {
         loadingLabel="กำลังนำเข้าลูกค้าประจำจำลอง..."
       />
 
+
       <div className="border-t border-slate-200 pt-6">
 
         <div className="flex items-center gap-2 mb-4">
@@ -541,8 +598,8 @@ const SettingsView = ({ activeSection }) => {
     switch (activeSection) {
       case 'admins': return <AdminsPage />;
       case 'topics': return <TopicsPage />;
-      case 'data':   return <DataPage />;
-      default:       return <SettingsLanding />;
+      case 'data': return <DataPage />;
+      default: return <SettingsLanding />;
     }
   };
 

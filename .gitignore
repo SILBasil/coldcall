@@ -31,3 +31,15 @@ creds2.json
 *.pem
 .firebase/
 
+# AI Agents and Local Configs
+.agents/
+.claude/
+.cursor/
+.gemini/
+.impeccable/
+
+# Temporary and Data Files
+tmp/
+*.xlsx
+*.xls
+*.csv

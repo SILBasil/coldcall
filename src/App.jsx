@@ -20,6 +20,8 @@ import {
   ChevronDown,
   ChevronRight,
   User,
+  UserX,
+  Trash2,
 } from 'lucide-react';
 
 // Components
@@ -34,6 +36,8 @@ import PerformanceView from './components/views/PerformanceView';
 import AssignLeadsView from './components/views/AssignLeadsView';
 import AdminActivityView from './components/views/AdminActivityView';
 import SettingsView from './components/views/SettingsView';
+import LostCustomersView from './components/views/LostCustomersView';
+import TrashView from './components/views/TrashView';
 
 // Services
 import { leadService } from './services/leadService';
@@ -44,6 +48,7 @@ const ADMIN_MENU = [
   { key: 'new-leads',  label: 'เบอร์ใหม่',              icon: PhoneCall },
   { key: 'follow-up',  label: 'ลูกค้ารอตัดสินใจ',     icon: UserPlus },
   { key: 'retention',  label: 'ลูกค้าประจำ',           icon: Repeat },
+  { key: 'lost-customers', label: 'ลูกค้าหาย',         icon: UserX },
 ];
 
 const MANAGER_MENU = [
@@ -52,8 +57,10 @@ const MANAGER_MENU = [
   { key: 'new-leads',  label: 'รายชื่อเบอร์ใหม่',        icon: PhoneCall },
   { key: 'follow-up',  label: 'ลูกค้ารอตัดสินใจ',      icon: UserPlus },
   { key: 'retention',  label: 'งานลูกค้าประจำ',        icon: Repeat },
+  { key: 'lost-customers', label: 'ลูกค้าหาย',         icon: UserX },
   { key: 'assign',     label: 'มอบหมายงาน',            icon: UserCog },
   { key: 'activity',   label: 'การทำงานแอดมิน',        icon: Activity },
+  { key: 'trash',      label: 'ถังขยะรายชื่อ',         icon: Trash2 },
 ];
 
 const SETTINGS_SUBMENU = [
@@ -69,10 +76,12 @@ const PAGE_TITLES = {
   'new-leads':   'เบอร์ใหม่',
   'follow-up':   'ลูกค้ารอตัดสินใจ',
   retention:     'ลูกค้าประจำ',
+  'lost-customers': 'ลูกค้าหาย',
   performance:   'ประสิทธิผลงาน',
   assign:        'มอบหมายงาน',
   activity:      'ประวัติการทำงาน',
   settings:      'ตั้งค่าระบบ',
+  trash:         'ถังขยะรายชื่อ',
 };
 
 export default function App() {
@@ -100,6 +109,19 @@ export default function App() {
   // useEffect(() => {
   //   leadService.migrateMockData();
   // }, []);
+
+  // Clear retention filters when switching to other menus
+  useEffect(() => {
+    if (view !== 'retention' && view !== 'call-retention' && view !== 'view-retention') {
+      sessionStorage.removeItem('retention_retentionSubTab');
+      sessionStorage.removeItem('retention_searchTerm');
+      sessionStorage.removeItem('retention_currentPage');
+      sessionStorage.removeItem('retention_filterFreqAmt');
+      sessionStorage.removeItem('retention_filterFreqUnit');
+      sessionStorage.removeItem('retention_filterTrackStatus');
+      sessionStorage.removeItem('retention_filterOrderStatus');
+    }
+  }, [view]);
 
   const showToast = (text, type = 'success') => {
     setMessage({ text, type });
@@ -186,38 +208,38 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen bg-[#F1F5F9] font-sans text-slate-900 overflow-hidden antialiased">
+    <div className="flex h-screen bg-[#F8FAFC] font-sans text-slate-900 overflow-hidden antialiased">
       {/* ─── Sidebar ─────────────────────────────────────────────────────────── */}
       <aside
         className={`
           fixed md:relative inset-y-0 left-0 z-40
           transform transition-all duration-300 ease-in-out
           ${isSidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full md:translate-x-0 md:w-20'}
-          bg-[#0F172A] flex flex-col shadow-xl shrink-0
+          bg-white border-r border-slate-100 flex flex-col shadow-sm shrink-0
         `}
       >
         {/* Logo */}
-        <div className="h-14 flex items-center justify-center px-6 shrink-0 transition-all mb-2">
+        <div className="h-20 pt-6 flex items-center justify-center px-6 shrink-0 transition-all mb-2">
           <div className="flex items-center gap-4 group cursor-pointer">
-             <div className="bg-primary p-3 rounded-2xl shadow-xl shadow-primary/20 rotate-[-8deg] group-hover:rotate-0 transition-all duration-500">
+             <div className="bg-gradient-to-tr from-primary to-sky-400 p-3 rounded-2xl shadow-xl shadow-primary/20 rotate-[-8deg] group-hover:rotate-0 transition-all duration-500">
                 <PhoneCall size={24} className="text-white" />
              </div>
             {isSidebarOpen && (
               <div className="flex flex-col">
-              <div className="text-lg font-black text-white tracking-widest uppercase italic leading-none">
+              <div className="text-lg font-black text-slate-800 tracking-widest uppercase italic leading-none">
                 COLDCALL
               </div>
-                <span className="text-[11px] font-black text-indigo-400 uppercase tracking-[0.4em] mt-1.5 opacity-80">ศูนย์บริหารการขาย</span>
+                <span className="text-[11px] font-black text-primary uppercase tracking-[0.4em] mt-1.5 opacity-80">ศูนย์บริหารการขาย</span>
               </div>
             )}
           </div>
         </div>
 
-        <hr className="mx-4 border-white/10" />
+        <hr className="mx-4 border-slate-100" />
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto custom-scrollbar">
-           <div className={`px-5 mb-3 text-[11px] font-black text-white/30 uppercase tracking-[0.2em] ${!isSidebarOpen && 'hidden'}`}>
+           <div className={`px-5 mb-3 text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] ${!isSidebarOpen && 'hidden'}`}>
              เมนูการทำงานหลัก
            </div>
           {menu.map(({ key, label, icon: Icon }) => {
@@ -242,12 +264,12 @@ export default function App() {
                   setSettingsOpen(o => !o);
                 }}
                 title={!isSidebarOpen ? 'ตั้งค่าระบบ' : undefined}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 group relative
-                  ${view === 'settings' ? 'text-white font-bold opacity-100' : 'text-white/60 hover:text-white hover:bg-white/5 opacity-80 hover:opacity-100'}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group relative border-none cursor-pointer
+                  ${view === 'settings' ? 'bg-sky-50 text-primary font-black shadow-sm' : 'text-slate-600 hover:text-primary hover:bg-sky-50/50 font-bold'}
                   ${!isSidebarOpen ? 'justify-center px-0' : ''}
                 `}
               >
-                <div className={`transition-all shrink-0 ${view === 'settings' ? 'text-white' : 'text-white/60 group-hover:text-white'}`}>
+                <div className={`transition-all shrink-0 ${view === 'settings' ? 'text-primary' : 'text-slate-400 group-hover:text-primary'}`}>
                   <Settings size={16} />
                 </div>
                 {isSidebarOpen && (
@@ -255,7 +277,7 @@ export default function App() {
                     <span className="text-[13px] tracking-normal truncate flex-1 text-left">ตั้งค่าระบบ</span>
                     <ChevronDown
                       size={14}
-                      className={`transition-transform duration-200 ${settingsOpen ? 'rotate-180' : ''} text-white/40 group-hover:text-white/70`}
+                      className={`transition-transform duration-200 ${settingsOpen ? 'rotate-180' : ''} text-slate-400 group-hover:text-primary`}
                     />
                   </>
                 )}
@@ -263,7 +285,7 @@ export default function App() {
 
               {/* Submenu */}
               {settingsOpen && isSidebarOpen && (
-                <div className="ml-4 mt-1 space-y-0.5 border-l border-white/10 pl-3">
+                <div className="ml-4 mt-1 space-y-0.5 border-l border-slate-100 pl-3">
                   {SETTINGS_SUBMENU.map(sub => (
                     <button
                       key={sub.key}
@@ -271,11 +293,11 @@ export default function App() {
                         setView('settings');
                         setActiveSettingsSection(sub.key);
                       }}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-[12px] font-bold transition-all duration-150
+                      className={`w-full text-left px-3 py-2 rounded-xl text-[12px] font-bold transition-all duration-150 border-none cursor-pointer
                         ${
                           view === 'settings' && activeSettingsSection === sub.key
-                            ? 'bg-indigo-600/30 text-indigo-300'
-                            : 'text-white/50 hover:text-white hover:bg-white/5'
+                            ? 'bg-sky-100/50 text-primary'
+                            : 'text-slate-500 hover:text-primary hover:bg-sky-50/30'
                         }
                       `}
                     >
@@ -287,16 +309,16 @@ export default function App() {
             </div>
           )}
           
-          <hr className="my-4 border-white/10" />
+          <hr className="my-4 border-slate-100" />
           
-          <div className={`px-4 mb-2 text-xs font-extrabold text-white/40 uppercase tracking-widest ${!isSidebarOpen && 'hidden'}`}>
+          <div className={`px-4 mb-2 text-xs font-extrabold text-slate-400 uppercase tracking-widest ${!isSidebarOpen && 'hidden'}`}>
             Role: {isManager ? 'Manager' : 'Admin'}
           </div>
         </nav>
 
         {/* Sidebar Footer (Optional) */}
         <div className={`p-4 transition-all opacity-40 hover:opacity-100 ${!isSidebarOpen && 'hidden'}`}>
-           <div className="text-[11px] text-white/70 text-center font-bold tracking-[0.2em] uppercase">
+           <div className="text-[11px] text-slate-400 text-center font-bold tracking-[0.2em] uppercase">
               V1.5.0 BUILD
            </div>
         </div>
@@ -314,16 +336,30 @@ export default function App() {
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Header (Topbar) */}
         <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 z-30 sticky top-0">
-          <button
-            onClick={() => setSidebarOpen(o => !o)}
-            className="p-3 rounded-2xl text-slate-600 hover:bg-slate-50 hover:text-primary transition-all mr-8 bg-white border border-slate-100 shadow-sm"
-          >
-            {isSidebarOpen ? <X size={18} /> : <Menu size={20} />}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setSidebarOpen(o => !o)}
+              className="p-3 rounded-2xl text-slate-600 hover:bg-slate-50 hover:text-primary transition-all bg-white border border-slate-100 shadow-sm cursor-pointer"
+            >
+              {isSidebarOpen ? <X size={18} /> : <Menu size={20} />}
+            </button>
+
+            {/* Page Title inside Header */}
+            <div className="flex flex-col justify-center select-none">
+              <div className="text-sm md:text-base text-slate-900 font-black tracking-tight italic uppercase leading-none">
+                {isDetailView
+                  ? (view.startsWith('call') ? 'บันทึกการทำงาน' : 'ดูข้อมูลทรัพยากร')
+                  : pageTitle}
+              </div>
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.15em] mt-1.5 leading-none hidden sm:inline-block">
+                ColdCall Network Performance Monitoring
+              </span>
+            </div>
+          </div>
 
           <div className="flex items-center gap-2 ml-auto">
             {/* Notifications */}
-            <button className="p-2.5 text-slate-600 hover:text-slate-800 relative bg-slate-50/50 rounded-xl transition-colors">
+            <button className="p-2.5 text-slate-600 hover:text-slate-800 relative bg-slate-50/50 rounded-xl transition-colors border-none cursor-pointer">
                <Bell size={18} />
                <span className="absolute top-2 right-2 w-3.5 h-3.5 bg-danger text-white text-[10px] font-black rounded-full flex items-center justify-center border-2 border-white pointer-events-none">3</span>
             </button>
@@ -341,7 +377,7 @@ export default function App() {
             
              <button
                onClick={handleLogout}
-               className="ml-4 p-2.5 text-slate-600 hover:text-danger hover:bg-danger/5 rounded-xl transition-all"
+               className="ml-4 p-2.5 text-slate-600 hover:text-danger hover:bg-danger/5 rounded-xl transition-all border-none cursor-pointer"
                title="Logout"
             >
                <LogOut size={16} />
@@ -349,20 +385,8 @@ export default function App() {
           </div>
         </header>
 
-        {/* Sub-header with Title and Generate Report Button */}
-        <div className="px-4 py-2 flex items-center justify-between shrink-0 bg-white/50 border-b border-slate-100">
-          <div>
-            <div className="text-xl text-slate-900 font-black tracking-tighter italic uppercase">
-              {isDetailView
-                ? (view.startsWith('call') ? 'บันทึกการทำงาน' : 'ดูข้อมูลทรัพยากร')
-                : pageTitle}
-            </div>
-            <p className="text-[11px] font-black text-slate-600 uppercase tracking-[0.2em] mt-1 opacity-80">ColdCall Network Performance Monitoring</p>
-          </div>
-        </div>
-
         {/* Page Content */}
-        <main className="flex-1 overflow-auto px-4 pb-3">
+        <main className="flex-1 overflow-auto px-4 pt-4 pb-3">
           <div className="mx-auto w-full">
             {/* ── Dashboard ── */}
             {view === 'dashboard' && isManager && <ManagerDashboardView />}
@@ -379,10 +403,13 @@ export default function App() {
             {/* ── Customer Lists ── */}
             {(view === 'master-pool' || view === 'new-leads' || view === 'follow-up' || view === 'retention') && (
               <CustomerListView
+                key={view}
                 type={view}
+                setView={setView}
                 activeTab={activeTab}
                 setActiveTab={setActiveTab}
                 currentAdminId={currentAdminId}
+                currentAdminName={user?.name}
                 role={role}
                 showToast={showToast}
                 onCall={(c, readonly, phone) => {
@@ -402,6 +429,22 @@ export default function App() {
             {view === 'call-retention' && <RetentionTrackingForm customer={selectedCustomer} onBack={() => setView('retention')} showToast={showToast} currentAdminId={currentAdminId} currentAdminName={user?.name} />}
             {view === 'view-retention' && <RetentionTrackingForm customer={selectedCustomer} onBack={() => setView('retention')} showToast={showToast} readonly />}
 
+            {/* ── Lost Customers ── */}
+            {view === 'lost-customers' && (
+              <LostCustomersView
+                currentAdminId={currentAdminId}
+                currentAdminName={user?.name}
+                isManager={isManager}
+                showToast={showToast}
+                onCall={(c) => {
+                  setSelectedCustomer(c);
+                  setView(isManager ? 'view-lost-customers' : 'call-lost-customers');
+                }}
+              />
+            )}
+            {view === 'call-lost-customers' && <RetentionTrackingForm customer={selectedCustomer} onBack={() => setView('lost-customers')} showToast={showToast} currentAdminId={currentAdminId} currentAdminName={user?.name} />}
+            {view === 'view-lost-customers' && <RetentionTrackingForm customer={selectedCustomer} onBack={() => setView('lost-customers')} showToast={showToast} readonly />}
+
             {/* ── Performance (Admin only) ── */}
             {view === 'performance' && !isManager && <PerformanceView />}
 
@@ -413,6 +456,11 @@ export default function App() {
             {/* ── Activity Log (Manager only) ── */}
             {view === 'activity' && isManager && (
               <AdminActivityView role={role} />
+            )}
+
+            {/* ── Trash (Manager only) ── */}
+            {view === 'trash' && isManager && (
+              <TrashView showToast={showToast} />
             )}
 
             {/* ── Settings (Manager only) ── */}

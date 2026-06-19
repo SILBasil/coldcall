@@ -15,7 +15,8 @@ import {
   limit,
   writeBatch,
   startAfter,
-  getCountFromServer
+  getCountFromServer,
+  deleteField
 } from "firebase/firestore";
 import { db, functions } from "../firebase";
 import { httpsCallable } from "firebase/functions";
@@ -37,6 +38,17 @@ const reqCache = {
     reqCache[key] = { ts: Date.now(), data };
     return data;
   }
+};
+
+const getMockToday = () => {
+  const mock = localStorage.getItem('mockTodayStr');
+  if (mock) {
+    const mockDate = new Date(mock);
+    const now = new Date();
+    mockDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+    return mockDate;
+  }
+  return new Date();
 };
 
 export const leadService = {
@@ -117,34 +129,37 @@ export const leadService = {
 
   async getCustomersByStagePaginated(stage, adminId = null, lastDoc = null, limitCount = 100, options = {}) {
     try {
-      let constraints = [
-        where("stage", "==", stage),
-        orderBy("updatedAt", "desc"),
-        limit(limitCount)
-      ];
+      let constraints = [];
       
+      if (stage && stage !== 'all') {
+        constraints.push(where("stage", "==", stage));
+      }
       if (options.status) {
-        constraints.unshift(where("status", "==", options.status));
+        constraints.push(where("status", "==", options.status));
       }
-      
       if (adminId) {
-        constraints.unshift(where("responsibleId", "==", adminId));
+        constraints.push(where("responsibleId", "==", adminId));
       }
-      
       if (lastDoc) {
         constraints.push(startAfter(lastDoc));
       }
+      
+      constraints.push(orderBy("updatedAt", "desc"));
+      constraints.push(limit(limitCount));
 
       const q = query(collection(db, CUSTOMERS_COL), ...constraints);
       const snapshot = await getDocs(q);
       
       // Get total count for this stage (optimized)
-      let countConstraints = [where("stage", "==", stage)];
+      let countConstraints = [];
+      if (stage && stage !== 'all') {
+        countConstraints.push(where("stage", "==", stage));
+      }
       if (options.status) {
-        countConstraints.unshift(where("status", "==", options.status));
+        countConstraints.push(where("status", "==", options.status));
       }
       if (adminId) {
-         countConstraints.unshift(where("responsibleId", "==", adminId));
+         countConstraints.push(where("responsibleId", "==", adminId));
       }
       const countQuery = query(collection(db, CUSTOMERS_COL), ...countConstraints);
       const countSnapshot = await getCountFromServer(countQuery);
@@ -222,11 +237,48 @@ export const leadService = {
   async getStats(date = new Date(), mode = 'week') {
     try {
       // 1. Stage Counts
-      const [poolCount, qualifiedCount, customerCount, unassignedCount] = await Promise.all([
+      const inactiveStatuses = [
+        'ปิดเครื่อง / ติดต่อไม่ได้',
+        'ไม่สนใจ',
+        'เลิกขาย/ปิดกิจการ',
+        'ยังไม่สะดวกคุยตอนนี้',
+        'ติดต่อยาก / รอสายยาว',
+        'ลูกค้ามีสินค้าเหลือในสต็อก',
+        'ต้องการของแถม/โปรโมชั่นพิเศษ',
+        'โทรไม่รับ',
+        'โทรไม่ซื้อ'
+      ];
+
+      const pendingStatuses = ["⏳ รอการตัดสินใจ", "⏳ รอตัดสินใจ", "⏳ รอการตัดสินใจ (Pending)", "🤔 รอตัดสินใจ", "⏳ เสนอราคา"];
+      const lostStatuses = ["❌ ปิดเสีย (Lost)", "❌ ปิดดีลไม่ได้", "❌ ปิดดีลไม่ได้ (Closed Lost)", "ปิดเครื่อง / ติดต่อไม่ได้", "ไม่สนใจ", "โทรไม่รับ", "โทรไม่ซื้อ"];
+
+      const [
+        poolCount, 
+        poolUnassigned,
+        poolLost,
+        qualifiedCount, 
+        qualifiedPending,
+        qualifiedLost,
+        customerCount, 
+        customerWon,
+        customerLost,
+        unassignedCount,
+        lostCount
+      ] = await Promise.all([
         getCountFromServer(query(collection(db, CUSTOMERS_COL), where("stage", "==", "pool"))),
+        getCountFromServer(query(collection(db, CUSTOMERS_COL), where("stage", "==", "pool"), where("responsibleId", "==", null))),
+        getCountFromServer(query(collection(db, CUSTOMERS_COL), where("stage", "==", "pool"), where("status", "in", inactiveStatuses))),
+        
         getCountFromServer(query(collection(db, CUSTOMERS_COL), where("stage", "==", "qualified"))),
+        getCountFromServer(query(collection(db, CUSTOMERS_COL), where("stage", "==", "qualified"), where("status", "in", pendingStatuses))),
+        getCountFromServer(query(collection(db, CUSTOMERS_COL), where("stage", "==", "qualified"), where("status", "in", lostStatuses))),
+        
         getCountFromServer(query(collection(db, CUSTOMERS_COL), where("stage", "==", "customer"))),
-        getCountFromServer(query(collection(db, CUSTOMERS_COL), where("stage", "==", "qualified"), where("responsibleId", "==", null)))
+        getCountFromServer(query(collection(db, CUSTOMERS_COL), where("stage", "==", "customer"), where("status", "in", ["✅ สั่งซื้อซ้ำสำเร็จ", "✅ สั่งซื้อแล้ว", "✅ ปิดการขาย", "✅ ปิดดีลสำเร็จ (Closed Won)", "✨ ลูกค้าเก่า", "สั่งซื้อแล้ว"]))),
+        getCountFromServer(query(collection(db, CUSTOMERS_COL), where("stage", "==", "customer"), where("status", "in", inactiveStatuses))),
+        
+        getCountFromServer(query(collection(db, CUSTOMERS_COL), where("stage", "==", "qualified"), where("responsibleId", "==", null))),
+        getCountFromServer(query(collection(db, CUSTOMERS_COL), where("stage", "==", "customer"), where("status", "in", inactiveStatuses)))
       ]);
       
       const stats = {
@@ -234,8 +286,29 @@ export const leadService = {
         qualified: qualifiedCount.data().count,
         customer: customerCount.data().count,
         unassigned: unassignedCount.data().count,
+        lost: lostCount.data().count,
         total: poolCount.data().count + qualifiedCount.data().count + customerCount.data().count,
-        mode
+        mode,
+        categoryBreakdown: {
+          pool: {
+            total: poolCount.data().count,
+            remaining: poolUnassigned.data().count,
+            lost: poolLost.data().count,
+            done: Math.max(0, poolCount.data().count - poolUnassigned.data().count - poolLost.data().count)
+          },
+          qualified: {
+            total: qualifiedCount.data().count,
+            remaining: qualifiedPending.data().count,
+            lost: qualifiedLost.data().count,
+            done: Math.max(0, qualifiedCount.data().count - qualifiedPending.data().count - qualifiedLost.data().count)
+          },
+          customer: {
+            total: customerCount.data().count,
+            done: customerWon.data().count,
+            lost: customerLost.data().count,
+            remaining: Math.max(0, customerCount.data().count - customerWon.data().count - customerLost.data().count)
+          }
+        }
       };
 
       // 2. Admin Users
@@ -298,7 +371,9 @@ export const leadService = {
         if (!l.adminId) return;
         if (!adminMap[l.adminId]) adminMap[l.adminId] = { id: l.adminId, name: l.adminName, followed: 0, converted: 0 };
         if (l.type === 'call' || l.type === 'save') adminMap[l.adminId].followed++;
-        const isWon = l.comment?.includes('สั่งซื้อซ้ำ') || l.comment?.includes('ปิดยอด') || l.action?.includes('สั่งซื้อซ้ำ') || l.snapshot?.formState?.status?.includes('สั่งซื้อซ้ำ') || l.action?.includes('ปิดยอด');
+        const isWon = l.comment?.includes('สั่งซื้อซ้ำ') || l.comment?.includes('ปิดยอด') || l.comment?.includes('ปิดดีลสำเร็จ') || l.comment?.includes('Closed Won') ||
+                      l.action?.includes('สั่งซื้อซ้ำ') || l.action?.includes('ปิดยอด') || l.action?.includes('ปิดดีลสำเร็จ') || l.action?.includes('Closed Won') ||
+                      l.snapshot?.formState?.status?.includes('สั่งซื้อซ้ำ') || l.snapshot?.formState?.status?.includes('ปิดยอด') || l.snapshot?.formState?.status?.includes('ปิดดีลสำเร็จ') || l.snapshot?.formState?.status?.includes('Closed Won');
         if (l.type === 'save' && l.customerStage === 'customer' && isWon) adminMap[l.adminId].converted++;
         if (l.type === 'save' && l.customerStage === 'qualified' && isWon) adminMap[l.adminId].converted++;
       });
@@ -315,16 +390,20 @@ export const leadService = {
         const dayEnd = new Date(d.setHours(23, 59, 59, 999));
         const count = weeklyLogs.filter(l => {
           const lTs = l.timestamp?.toDate ? l.timestamp.toDate() : new Date(l.timestamp);
-          return lTs >= dayStart && lTs <= dayEnd && (l.type === 'call' || l.type === 'save');
+          return lTs >= dayStart && lTs <= dayEnd && (l.type === 'call' || l.type === 'save') && l.customerStage !== 'trash';
         }).length;
         trendCounts.push(count);
       }
       stats.activityTrend = { labels: trendLabels, counts: trendCounts };
 
       // 5. Weekly Efficiency Stats
-      const weeklyTotalEffort = weeklyLogs.filter(l => l.type === 'call' || l.type === 'save').length;
+      const weeklyTotalEffort = weeklyLogs.filter(l => (l.type === 'call' || l.type === 'save') && l.customerStage !== 'trash').length;
       const weeklySuccess = weeklyLogs.filter(l => 
-        l.type === 'save' && (l.comment?.includes('ปิดยอด') || l.comment?.includes('สั่งซื้อซ้ำ') || l.action?.includes('สั่งซื้อซ้ำ') || l.snapshot?.formState?.status?.includes('สั่งซื้อซ้ำ') || l.action?.includes('ปิดยอด'))
+        l.type === 'save' && l.customerStage !== 'trash' && (
+          l.comment?.includes('ปิดยอด') || l.comment?.includes('สั่งซื้อซ้ำ') || l.comment?.includes('ปิดดีลสำเร็จ') || l.comment?.includes('Closed Won') ||
+          l.action?.includes('สั่งซื้อซ้ำ') || l.action?.includes('ปิดยอด') || l.action?.includes('ปิดดีลสำเร็จ') || l.action?.includes('Closed Won') ||
+          l.snapshot?.formState?.status?.includes('สั่งซื้อซ้ำ') || l.snapshot?.formState?.status?.includes('ปิดยอด') || l.snapshot?.formState?.status?.includes('ปิดดีลสำเร็จ') || l.snapshot?.formState?.status?.includes('Closed Won')
+        )
       ).length;
       const realEfficiency = weeklyTotalEffort > 0 ? Math.round((weeklySuccess / weeklyTotalEffort) * 100) : 0;
 
@@ -334,7 +413,7 @@ export const leadService = {
       
       const todayPoolLogs = weeklyLogs.filter(l => {
         const t = l.timestamp?.toDate ? l.timestamp.toDate() : new Date(l.timestamp);
-        return t >= todayStart && t <= todayEnd && (l.type === 'save' || l.type === 'call');
+        return t >= todayStart && t <= todayEnd && (l.type === 'save' || l.type === 'call') && l.customerStage !== 'trash';
       });
       stats.newLeadsToday = Math.max(todayPoolLogs.length, 0);
 
@@ -346,7 +425,7 @@ export const leadService = {
           time: (l.timestamp?.toDate ? l.timestamp.toDate() : new Date(l.timestamp)).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
           actor: l.adminName || 'System',
           action: l.comment || l.action || 'กิจกรรมในระบบ',
-          type: (l.comment?.includes('ปิดยอด') || l.comment?.includes('สั่งซื้อซ้ำ')) ? 'success' : (l.type === 'login' || l.type === 'logout' ? 'system' : 'info')
+          type: (l.comment?.includes('ปิดยอด') || l.comment?.includes('สั่งซื้อซ้ำ') || l.comment?.includes('ปิดดีลสำเร็จ') || l.comment?.includes('Closed Won') || l.action?.includes('ปิดดีลสำเร็จ') || l.action?.includes('Closed Won')) ? 'success' : (l.type === 'login' || l.type === 'logout' ? 'system' : 'info')
         }));
 
       stats.weeklyStats = {
@@ -378,7 +457,9 @@ export const leadService = {
       // 7. Lost Reasons Analysis
       const teamLostReasonsMap = {};
       weeklyLogs.filter(l => l.type === 'save' && l.customerStage === 'qualified').forEach(l => {
-        const isLost = l.comment?.includes('ปิดเครื่อง') || l.comment?.includes('ไม่สนใจ') || l.comment?.includes('ยกเลิก') || l.action?.includes('ไม่สนใจ') || l.snapshot?.formState?.status?.includes('ไม่สนใจ') || l.action?.includes('ปิดเครื่อง');
+        const isLost = l.comment?.includes('ปิดเครื่อง') || l.comment?.includes('ไม่สนใจ') || l.comment?.includes('ยกเลิก') || l.comment?.includes('โทรไม่รับ') || l.comment?.includes('โทรไม่ซื้อ') ||
+                       l.action?.includes('ไม่สนใจ') || l.action?.includes('ปิดเครื่อง') || l.action?.includes('โทรไม่รับ') || l.action?.includes('โทรไม่ซื้อ') ||
+                       l.snapshot?.formState?.status?.includes('ไม่สนใจ') || l.snapshot?.formState?.status?.includes('ปิดเครื่อง') || l.snapshot?.formState?.status?.includes('โทรไม่รับ') || l.snapshot?.formState?.status?.includes('โทรไม่ซื้อ');
         if (isLost && l.reasons && Array.isArray(l.reasons)) {
            l.reasons.forEach(r => {
               teamLostReasonsMap[r] = (teamLostReasonsMap[r] || 0) + 1;
@@ -400,9 +481,13 @@ export const leadService = {
       stats.activityHeatmap = heatmap;
 
       // 9. Team Call Outcomes Breakdown
-      const teamSaveLogs = weeklyLogs.filter(l => l.type === 'save');
+      const teamSaveLogs = weeklyLogs.filter(l => l.type === 'save' && l.customerStage !== 'trash');
       const teamWon = teamSaveLogs.filter(l => l.comment?.includes('ปิดยอด') || l.comment?.includes('สั่งซื้อซ้ำ') || l.action?.includes('สั่งซื้อซ้ำ') || l.snapshot?.formState?.status?.includes('สั่งซื้อซ้ำ') || l.action?.includes('ปิดยอด')).length;
-      const teamLost = teamSaveLogs.filter(l => l.comment?.includes('ปิดเครื่อง') || l.comment?.includes('ไม่สนใจ') || l.comment?.includes('ยกเลิก') || l.action?.includes('ไม่สนใจ') || l.snapshot?.formState?.status?.includes('ไม่สนใจ') || l.action?.includes('ปิดเครื่อง')).length;
+      const teamLost = teamSaveLogs.filter(l => 
+        l.comment?.includes('ปิดเครื่อง') || l.comment?.includes('ไม่สนใจ') || l.comment?.includes('ยกเลิก') || l.comment?.includes('โทรไม่รับ') || l.comment?.includes('โทรไม่ซื้อ') ||
+        l.action?.includes('ไม่สนใจ') || l.action?.includes('ปิดเครื่อง') || l.action?.includes('โทรไม่รับ') || l.action?.includes('โทรไม่ซื้อ') ||
+        l.snapshot?.formState?.status?.includes('ไม่สนใจ') || l.snapshot?.formState?.status?.includes('ปิดเครื่อง') || l.snapshot?.formState?.status?.includes('โทรไม่รับ') || l.snapshot?.formState?.status?.includes('โทรไม่ซื้อ')
+      ).length;
       const teamPending = Math.max(0, teamSaveLogs.length - teamWon - teamLost);
 
       stats.teamCallOutcomes = [
@@ -441,10 +526,438 @@ export const leadService = {
         toCustomer
       };
 
+      // 10.5 Growth Trend Stats
+      const isWonLog = (l) => {
+        const comment = l.comment || '';
+        const action = l.action || '';
+        const status = l.snapshot?.formState?.status || l.status || '';
+        return comment.includes('ปิดยอด') || comment.includes('สั่งซื้อซ้ำ') || comment.includes('ปิดดีลสำเร็จ') || comment.includes('Closed Won') ||
+               action.includes('สั่งซื้อซ้ำ') || action.includes('ปิดยอด') || action.includes('ปิดดีลสำเร็จ') || action.includes('Closed Won') ||
+               status.includes('สั่งซื้อซ้ำ') || status.includes('ปิดยอด') || status.includes('ปิดดีลสำเร็จ') || status.includes('Closed Won') ||
+               status.includes('สั่งซื้อแล้ว') || status.includes('ปิดการขาย');
+      };
+
+      const newCustomersCount = weeklyLogs.filter(l => {
+        const prev = l.snapshot?.previousStage || l.previousStage;
+        const curr = l.snapshot?.formState?.stage || l.customerStage;
+        return curr === 'customer' && (prev === 'pool' || prev === 'qualified') && isWonLog(l);
+      }).length;
+
+      const pendingDecisionCount = [...new Set(weeklyLogs
+        .filter(l => {
+          const stage = l.snapshot?.formState?.stage || l.customerStage;
+          return stage === 'qualified';
+        })
+        .map(l => l.customerId || l.customerPhone || l.phone)
+      )].filter(Boolean).length;
+
+      const regularFollowUps = weeklyLogs.filter(l => {
+        const stage = l.snapshot?.formState?.stage || l.customerStage;
+        return stage === 'customer' && (l.type === 'call' || l.type === 'save');
+      }).length;
+
+      const regularLostCount = weeklyLogs.filter(l => {
+        const stage = l.snapshot?.formState?.stage || l.customerStage;
+        if (stage !== 'customer') return false;
+        if (l.type !== 'save' && l.type !== 'call') return false;
+        
+        const comment = l.comment || '';
+        const action = l.action || '';
+        const status = l.snapshot?.formState?.status || '';
+        
+        return inactiveStatuses.some(s => 
+          comment.includes(s) || action.includes(s) || status.includes(s)
+        );
+      }).length;
+
+      stats.growthStats = {
+        newCustomersCount,
+        pendingDecisionCount,
+        regularFollowUps,
+        regularLostCount
+      };
+
+      // 11. Compute call frequencies status stats for regular customers
+      try {
+        const qCustomers = query(collection(db, CUSTOMERS_COL), where("stage", "==", "customer"));
+        const snapCustomers = await getDocs(qCustomers);
+        const regularCustomers = snapCustomers.docs.map(d => ({ ...d.data(), id: d.id }));
+
+        const groups = {
+          '1w': { label: '1 สัปดาห์', total: 0, bought: 0, lost: 0, followup: 0, remaining: 0 },
+          '2w': { label: '2 สัปดาห์', total: 0, bought: 0, lost: 0, followup: 0, remaining: 0 },
+          '3w': { label: '3 สัปดาห์', total: 0, bought: 0, lost: 0, followup: 0, remaining: 0 },
+          '1m': { label: '1 เดือน', total: 0, bought: 0, lost: 0, followup: 0, remaining: 0 },
+          '2m': { label: '2 เดือน', total: 0, bought: 0, lost: 0, followup: 0, remaining: 0 },
+          '3m': { label: '3 เดือน', total: 0, bought: 0, lost: 0, followup: 0, remaining: 0 },
+          'other': { label: 'อื่น ๆ', total: 0, bought: 0, lost: 0, followup: 0, remaining: 0 }
+        };
+
+        const parseThaiDateLocal = (dateStr) => {
+          if (!dateStr) return null;
+          if (typeof dateStr !== 'string') {
+            const parsedDate = dateStr.toDate ? dateStr.toDate() : new Date(dateStr);
+            return isNaN(parsedDate.getTime()) ? null : parsedDate;
+          }
+          const str = dateStr.trim();
+          if (str.includes('/')) {
+            const parts = str.split('/');
+            if (parts.length === 3) {
+              const d = parseInt(parts[0], 10);
+              const m = parseInt(parts[1], 10) - 1;
+              let y = parseInt(parts[2], 10);
+              if (y > 2400) y = y - 543;
+              return new Date(y, m, d);
+            }
+          }
+          if (str.includes('-')) {
+            const parts = str.split('-');
+            if (parts.length === 3) {
+              const y = parseInt(parts[0], 10);
+              const m = parseInt(parts[1], 10) - 1;
+              const d = parseInt(parts[2], 10);
+              return new Date(y, m, d);
+            }
+          }
+          const parsed = new Date(str);
+          return isNaN(parsed.getTime()) ? null : parsed;
+        };
+
+        const isStatusBought = (statusStr) => {
+          if (!statusStr) return false;
+          return statusStr.includes('สั่งซื้อ') || statusStr.includes('ปิดยอด') || statusStr.includes('ซื้อ') || statusStr.includes('ปิดดีลสำเร็จ') || statusStr.includes('Closed Won');
+        };
+
+        const isStatusLost = (statusStr) => {
+          if (!statusStr) return false;
+          return statusStr.includes('โทรไม่รับ') || 
+                 statusStr.includes('โทรไม่ซื้อ') || 
+                 statusStr.includes('ไม่สนใจ') || 
+                 statusStr.includes('ปิดเครื่อง') || 
+                 statusStr.includes('ยกเลิก') || 
+                 statusStr.includes('ติดต่อไม่ได้') ||
+                 statusStr.includes('เลิกขาย') ||
+                 statusStr.includes('ปิดกิจการ') ||
+                 statusStr.includes('ไม่สะดวกคุย') ||
+                 statusStr.includes('ติดต่อยาก') ||
+                 statusStr.includes('สินค้าเหลือ') ||
+                 statusStr.includes('ของแถม') ||
+                 statusStr.includes('โปรโมชั่น');
+        };
+
+        const inactiveStatusesSet = new Set([
+          'ปิดเครื่อง / ติดต่อไม่ได้',
+          'ไม่สนใจ',
+          'เลิกขาย/ปิดกิจการ',
+          'ยังไม่สะดวกคุยตอนนี้',
+          'ติดต่อยาก / รอสายยาว',
+          'ลูกค้ามีสินค้าเหลือในสต็อก',
+          'ต้องการของแถม/โปรโมชั่นพิเศษ',
+          'โทรไม่รับ',
+          'โทรไม่ซื้อ'
+        ]);
+
+        const isOverdueNoOrder = (c) => {
+          const lastContact = parseThaiDateLocal(c.lastCallDate) || parseThaiDateLocal(c.lastActionDate);
+          if (!lastContact) return false;
+
+          const lastOrder = parseThaiDateLocal(c.lastOrderDate);
+          if (!lastOrder) return false;
+
+          const freqAmount = parseInt(c.freqAmount) || 1;
+          const freqUnit = c.freqUnit || 'สัปดาห์';
+          const dueDate = new Date(lastOrder);
+          if (freqUnit === 'เดือน') {
+            dueDate.setMonth(dueDate.getMonth() + freqAmount);
+          } else {
+            dueDate.setDate(dueDate.getDate() + freqAmount * 7);
+          }
+
+          const now = new Date();
+          now.setHours(23, 59, 59, 999);
+
+          const wonStatuses = ['สั่งซื้อซ้ำสำเร็จ', 'สั่งซื้อซ้ำ', 'สั่งซื้อผ่านตัวแทนจำหน่าย', 'สั่งซื้อตรงกับโรงงาน/CLM', 'สั่งซื้อผ่านช่องทาง Shopee/Zort/Online'];
+          const isWon = wonStatuses.some(s => (c.status || '').includes(s));
+          
+          return dueDate < now && !isWon;
+        };
+
+        const totalLost = regularCustomers.filter(c => {
+          if (c.status && inactiveStatusesSet.has(c.status) && c.stage !== 'customer') return true;
+          if (isOverdueNoOrder(c)) return true;
+          return false;
+        }).length;
+
+        stats.lost = totalLost;
+        if (stats.categoryBreakdown && stats.categoryBreakdown.customer) {
+          stats.categoryBreakdown.customer.lost = totalLost;
+          stats.categoryBreakdown.customer.remaining = Math.max(0, stats.categoryBreakdown.customer.total - stats.categoryBreakdown.customer.done - totalLost);
+        }
+
+        regularCustomers.forEach(c => {
+          const hasLog = weeklyLogs.some(l => l.customerId === c.id || l.customerPhone === c.phone);
+          
+          let wonDate = parseThaiDateLocal(c.lastOrderDate);
+          if (!wonDate) {
+            wonDate = c.wonAt?.toDate ? c.wonAt.toDate() : (c.createdAt?.toDate ? c.createdAt.toDate() : (c.updatedAt?.toDate ? c.updatedAt.toDate() : null));
+          }
+          const fDays = c.followUpFrequencyDays || (c.freqUnit === 'เดือน' ? (c.freqAmount || 1) * 30 : (c.freqAmount || 1) * 7);
+          let isDueThisWeek = false;
+
+          if (wonDate && fDays) {
+              let currentDate = new Date(wonDate);
+              let sanity = 0;
+              while (currentDate <= endOfPeriod && sanity < 100) {
+                 sanity++;
+                 currentDate = new Date(currentDate);
+                 currentDate.setDate(currentDate.getDate() + fDays);
+                 if (currentDate >= startOfPeriod && currentDate <= endOfPeriod) {
+                     isDueThisWeek = true;
+                     break;
+                 }
+              }
+              if (!isDueThisWeek) {
+                  const diffMs = startOfPeriod - wonDate;
+                  if (diffMs > 0 && Math.floor(diffMs / (1000 * 60 * 60 * 24)) >= fDays) {
+                      isDueThisWeek = true;
+                  }
+              }
+          } else {
+              if (wonDate && wonDate >= startOfPeriod && wonDate <= endOfPeriod) {
+                  isDueThisWeek = true;
+              } else if (wonDate && wonDate < startOfPeriod) {
+                  isDueThisWeek = true;
+              }
+          }
+
+          if (!hasLog && !isDueThisWeek) {
+            return;
+          }
+
+          const amt = c.freqAmount || 1;
+          const unit = c.freqUnit || 'สัปดาห์';
+          let freqKey = 'other';
+          if (unit === 'สัปดาห์') {
+            if (amt === 1) freqKey = '1w';
+            else if (amt === 2) freqKey = '2w';
+            else if (amt === 3) freqKey = '3w';
+          } else if (unit === 'เดือน') {
+            if (amt === 1) freqKey = '1m';
+            else if (amt === 2) freqKey = '2m';
+            else if (amt === 3) freqKey = '3m';
+          }
+
+          const group = groups[freqKey];
+          group.total++;
+
+          if (hasLog) {
+            const custLogs = weeklyLogs
+              .filter(l => (l.customerId === c.id || l.customerPhone === c.phone) && (l.type === 'save' || l.type === 'call'))
+              .sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+
+            const latestLog = custLogs[0];
+            if (latestLog) {
+              const statusStr = latestLog.comment || latestLog.action || latestLog.snapshot?.formState?.status || '';
+              if (isStatusBought(statusStr)) {
+                group.bought++;
+              } else if (isStatusLost(statusStr)) {
+                group.lost++;
+              } else {
+                group.followup++;
+              }
+            } else {
+              if (isStatusLost(c.status)) {
+                group.lost++;
+              } else {
+                group.remaining++;
+              }
+            }
+          } else {
+            if (isStatusLost(c.status)) {
+              group.lost++;
+            } else {
+              group.remaining++;
+            }
+          }
+        });
+
+        stats.frequencyStats = groups;
+      } catch (fErr) {
+        console.error("Error computing frequencyStats:", fErr);
+      }
+
       return stats;
     } catch (err) {
       console.error("Firebase Get Stats Error:", err);
       return {};
+    }
+  },
+
+  async getAssignTabCounts(statusFilter, adminFilter) {
+    try {
+      const buildConstraints = (stage, isPoolNew = null) => {
+        const list = [where("stage", "==", stage)];
+        
+        if (isPoolNew !== null) {
+          if (isPoolNew) {
+            list.push(where("status", "==", "🆕 รอดำเนินการ"));
+          }
+        }
+
+        if (statusFilter === 'unassigned') {
+          list.push(where("responsibleId", "==", null));
+        } else if (statusFilter === 'assigned') {
+          if (adminFilter !== 'all') {
+            list.push(where("responsibleId", "==", adminFilter));
+          } else {
+            list.push(where("responsibleId", "!=", null));
+          }
+        }
+        return list;
+      };
+
+      const qQualified = query(collection(db, CUSTOMERS_COL), ...buildConstraints("qualified"));
+      const qCustomer = query(collection(db, CUSTOMERS_COL), ...buildConstraints("customer"));
+      const qPoolTotal = query(collection(db, CUSTOMERS_COL), ...buildConstraints("pool"));
+      const qPoolNew = query(collection(db, CUSTOMERS_COL), ...buildConstraints("pool", true));
+
+      const [cQualified, cCustomer, cPoolTotal, cPoolNew] = await Promise.all([
+        getCountFromServer(qQualified),
+        getCountFromServer(qCustomer),
+        getCountFromServer(qPoolTotal),
+        getCountFromServer(qPoolNew)
+      ]);
+
+      const qualified = cQualified.data().count;
+      const customer = cCustomer.data().count;
+      const poolTotal = cPoolTotal.data().count;
+      const newLeads = cPoolNew.data().count;
+      const masterPool = Math.max(0, poolTotal - newLeads);
+
+      return { qualified, customer, newLeads, masterPool };
+    } catch (err) {
+      console.error("Error fetching assign tab counts:", err);
+      return { qualified: 0, customer: 0, newLeads: 0, masterPool: 0 };
+    }
+  },
+
+  async checkPhonesExist(phonesList) {
+    try {
+      if (!phonesList || phonesList.length === 0) return new Set();
+      const existingPhones = new Set();
+      const uniquePhones = [...new Set(phonesList)];
+      
+      const chunks = [];
+      for (let i = 0; i < uniquePhones.length; i += 30) {
+        chunks.push(uniquePhones.slice(i, i + 30));
+      }
+      
+      const dbPromises = chunks.map(async (chunk) => {
+        const q = query(
+          collection(db, CUSTOMERS_COL),
+          where("phone", "in", chunk)
+        );
+        const snapshot = await getDocs(q);
+        snapshot.docs.forEach(doc => {
+          const data = doc.data();
+          if (data.phone) existingPhones.add(data.phone);
+        });
+      });
+      
+      await Promise.all(dbPromises);
+      return existingPhones; // Returns a Set
+    } catch (err) {
+      console.error("Error checking phone existence:", err);
+      return new Set();
+    }
+  },
+
+  async getLeadsForAssignmentPaginated(activeTab, statusFilter, adminFilter, lastDoc = null, limitCount = 100) {
+    try {
+      let constraints = [];
+      if (activeTab !== 'all') {
+        const stage = (activeTab === 'new-leads' || activeTab === 'master-pool') ? 'pool' : activeTab;
+        constraints.push(where("stage", "==", stage));
+      }
+      
+      if (activeTab === 'new-leads') {
+        constraints.push(where("status", "==", "🆕 รอดำเนินการ"));
+      }
+      
+      if (statusFilter === 'unassigned') {
+        constraints.push(where("responsibleId", "==", null));
+      } else if (statusFilter === 'assigned' && adminFilter && adminFilter !== 'all') {
+        constraints.push(where("responsibleId", "==", adminFilter));
+      }
+      
+      const testConstraints = [...constraints, orderBy("updatedAt", "desc"), limit(limitCount)];
+      if (lastDoc) {
+        testConstraints.push(startAfter(lastDoc));
+      }
+      
+      const q = query(collection(db, CUSTOMERS_COL), ...testConstraints);
+      const snapshot = await getDocs(q);
+      
+      let docs = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
+      if (activeTab === 'master-pool') {
+        docs = docs.filter(l => l.status !== '🆕 รอดำเนินการ');
+      } else if (activeTab === 'all') {
+        docs = docs.filter(l => l.stage !== 'trash');
+      }
+      
+      return {
+        data: docs,
+        lastDoc: snapshot.docs[snapshot.docs.length - 1] || null,
+        hasMore: snapshot.docs.length === limitCount
+      };
+    } catch (primaryErr) {
+      console.warn("Primary assignment query failed (missing index?), falling back...", primaryErr.message);
+      
+      try {
+        let constraints = [];
+        if (activeTab !== 'all') {
+          const stage = (activeTab === 'new-leads' || activeTab === 'master-pool') ? 'pool' : activeTab;
+          constraints.push(where("stage", "==", stage));
+        }
+        constraints.push(orderBy("updatedAt", "desc"), limit(limitCount * 2));
+        
+        if (lastDoc) {
+          constraints.push(startAfter(lastDoc));
+        }
+        
+        const q = query(collection(db, CUSTOMERS_COL), ...constraints);
+        const snapshot = await getDocs(q);
+        
+        let docs = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
+        
+        // Post-filtering in memory
+        if (activeTab === 'new-leads') {
+          docs = docs.filter(l => l.status === '🆕 รอดำเนินการ');
+        } else if (activeTab === 'master-pool') {
+          docs = docs.filter(l => l.status !== '🆕 รอดำเนินการ');
+        } else if (activeTab === 'all') {
+          docs = docs.filter(l => l.stage !== 'trash');
+        }
+        
+        if (statusFilter === 'unassigned') {
+          docs = docs.filter(l => !l.responsibleId);
+        } else if (statusFilter === 'assigned') {
+          if (adminFilter && adminFilter !== 'all') {
+            docs = docs.filter(l => l.responsibleId === adminFilter);
+          } else {
+            docs = docs.filter(l => !!l.responsibleId);
+          }
+        }
+        
+        return {
+          data: docs.slice(0, limitCount),
+          lastDoc: snapshot.docs[snapshot.docs.length - 1] || null,
+          hasMore: snapshot.docs.length === (limitCount * 2)
+        };
+      } catch (fallbackErr) {
+        console.error("Fallback assignment query also failed:", fallbackErr);
+        throw fallbackErr;
+      }
     }
   },
 
@@ -487,9 +1000,14 @@ export const leadService = {
   // --- Activity Logging ---
   async logActivity(data) {
     try {
+      const mockStr = localStorage.getItem('mockTodayStr');
+      let timestamp = serverTimestamp();
+      if (mockStr) {
+        timestamp = getMockToday();
+      }
       const logData = {
         ...data,
-        timestamp: serverTimestamp()
+        timestamp: data.timestamp || timestamp
       };
       return await addDoc(collection(db, LOGS_COL), logData);
     } catch (err) {
@@ -767,8 +1285,76 @@ export const leadService = {
         .filter(c => c.isNewThisWeek || c.isBacklog || c.isDone)
         .sort((a, b) => (a.isDone ? 1 : 0) - (b.isDone ? 1 : 0));
 
+      // Calculate pool and qualified lists for Admin Dashboard cards
+      const poolList = relevantCusts
+        .filter(c => {
+          if (c.stage === 'customer') {
+            const wonDate = c.wonAt?.toDate ? c.wonAt.toDate() : null;
+            const isWonThisWeek = wonDate && wonDate >= startDate && wonDate <= endDate;
+            if (!isWonThisWeek) return false;
+            const createdAtDate = c.createdAt?.toDate ? c.createdAt.toDate() : null;
+            const createdThisWeek = createdAtDate && createdAtDate >= startDate && createdAtDate <= endDate;
+            const hasPoolLog = weekLogs.some(l => (l.customerId === c.id || l.customerPhone === c.phone) && l.previousStage === 'pool');
+            return createdThisWeek || hasPoolLog;
+          }
+          if (c.stage === 'pool') return true;
+          const createdAtDate = c.createdAt?.toDate ? c.createdAt.toDate() : null;
+          const createdThisWeek = createdAtDate && createdAtDate >= startDate && createdAtDate <= endDate;
+          const hasPoolLog = weekLogs.some(l => (l.customerId === c.id || l.customerPhone === c.phone) && l.previousStage === 'pool');
+          return createdThisWeek || hasPoolLog;
+        })
+        .map(c => {
+          const createdAtDate = c.createdAt?.toDate ? c.createdAt.toDate() : null;
+          const isNewThisWeek = createdAtDate ? (createdAtDate >= startDate && createdAtDate <= endDate) : false;
+          const isDone = touchedThisWeek.has(c.id) || touchedThisWeek.has(c.phone);
+          const wonDate = c.wonAt?.toDate ? c.wonAt.toDate() : null;
+          const isWonThisWeek = wonDate && wonDate >= startDate && wonDate <= endDate;
+          return {
+            ...c,
+            isDone,
+            isNewThisWeek,
+            isWonThisWeek
+          };
+        });
+
+      const qualifiedList = relevantCusts
+        .filter(c => {
+          if (c.stage === 'customer') {
+            const wonDate = c.wonAt?.toDate ? c.wonAt.toDate() : null;
+            const isWonThisWeek = wonDate && wonDate >= startDate && wonDate <= endDate;
+            if (!isWonThisWeek) return false;
+            const createdAtDate = c.createdAt?.toDate ? c.createdAt.toDate() : null;
+            const createdThisWeek = createdAtDate && createdAtDate >= startDate && createdAtDate <= endDate;
+            const hasPoolLog = weekLogs.some(l => (l.customerId === c.id || l.customerPhone === c.phone) && l.previousStage === 'pool');
+            return !(createdThisWeek || hasPoolLog);
+          }
+          if (c.stage === 'qualified') return true;
+          return false;
+        })
+        .map(c => {
+          const createdAtDate = c.createdAt?.toDate ? c.createdAt.toDate() : null;
+          const createdThisWeek = createdAtDate && createdAtDate >= startDate && createdAtDate <= endDate;
+          const hasPoolLog = weekLogs.some(l => (l.customerId === c.id || l.customerPhone === c.phone) && l.previousStage === 'pool');
+          const isNewThisWeek = hasPoolLog || (createdThisWeek && c.stage === 'qualified');
+          const isDone = touchedThisWeek.has(c.id) || touchedThisWeek.has(c.phone);
+          const wonDate = c.wonAt?.toDate ? c.wonAt.toDate() : null;
+          const isWonThisWeek = wonDate && wonDate >= startDate && wonDate <= endDate;
+          return {
+            ...c,
+            isDone,
+            isNewThisWeek,
+            isWonThisWeek
+          };
+        });
+
       const newCompleted = newLeadsList.filter(c => c.isDone).length;
       const retCompleted = retentionList.filter(c => c.isDone).length;
+
+      const poolCompletedWon = poolList.filter(c => c.isDone && c.isWonThisWeek).length;
+      const poolCompletedNotWon = poolList.filter(c => c.isDone && !c.isWonThisWeek).length;
+
+      const qualifiedCompletedWon = qualifiedList.filter(c => c.isDone && c.isWonThisWeek).length;
+      const qualifiedCompletedNotWon = qualifiedList.filter(c => c.isDone && !c.isWonThisWeek).length;
 
       return {
         newLeads: {
@@ -780,12 +1366,29 @@ export const leadService = {
           list: newLeadsList
         },
         retention: {
+          customerTotal: retentionListRaw.length,
           totalInHand: retentionList.length,
           completed: retCompleted,
           remaining: retentionList.length - retCompleted,
           assignedThisWeek: retentionList.filter(c => c.isNewThisWeek).length,
           backlogCount: retentionList.filter(c => !c.isDone && !c.isNewThisWeek).length,
           list: retentionList
+        },
+        pool: {
+          totalInHand: poolList.length,
+          assignedThisWeek: poolList.filter(c => c.isNewThisWeek).length,
+          backlogCount: poolList.filter(c => !c.isDone && !c.isNewThisWeek).length,
+          completedWon: poolCompletedWon,
+          completedNotWon: poolCompletedNotWon,
+          list: poolList
+        },
+        qualified: {
+          totalInHand: qualifiedList.length,
+          assignedThisWeek: qualifiedList.filter(c => c.isNewThisWeek).length,
+          backlogCount: qualifiedList.filter(c => !c.isDone && !c.isNewThisWeek).length,
+          completedWon: qualifiedCompletedWon,
+          completedNotWon: qualifiedCompletedNotWon,
+          list: qualifiedList
         }
       };
     } catch (err) {
@@ -846,7 +1449,7 @@ export const leadService = {
       
       const leadLost = saveLogs.filter(l =>
         l.customerStage === 'qualified' &&
-        (l.comment?.includes('ปิดเครื่อง') || l.comment?.includes('ไม่สนใจ') || l.comment?.includes('ยกเลิก') || l.action?.includes('ไม่สนใจ') || l.snapshot?.formState?.status?.includes('ไม่สนใจ') || (l.reasons && l.reasons.length > 0 && l.customerStage === 'qualified'))
+        (l.comment?.includes('ปิดเครื่อง') || l.comment?.includes('ไม่สนใจ') || l.comment?.includes('ยกเลิก') || l.comment?.includes('โทรไม่รับ') || l.comment?.includes('โทรไม่ซื้อ') || l.action?.includes('ไม่สนใจ') || l.snapshot?.formState?.status?.includes('ไม่สนใจ') || (l.reasons && l.reasons.length > 0 && l.customerStage === 'qualified'))
       ).length;
 
       const retOrdered = saveLogs.filter(l =>
@@ -952,7 +1555,7 @@ export const leadService = {
                   
                   let actionResult = '-';
                   if (c.status?.includes('สั่งซื้อซ้ำ') || c.status?.includes('ปิดยอด')) actionResult = 'WON';
-                  if (c.status?.includes('ไม่สนใจ') || c.status?.includes('ยกเลิก')) actionResult = 'LOST';
+                  if (c.status?.includes('ไม่สนใจ') || c.status?.includes('ยกเลิก') || c.status?.includes('โทรไม่รับ') || c.status?.includes('โทรไม่ซื้อ')) actionResult = 'LOST';
                   if (c.status?.includes('ยังไม่สะดวก') || c.status?.includes('เสนอราคา')) actionResult = 'FOLLOWUP';
 
                   return {
@@ -1337,6 +1940,178 @@ export const leadService = {
     return { success: true };
   },
 
+
+  /**
+   * โอนย้ายเบอร์ทั้งหมดจากแอดมินคนหนึ่งไปอีกคน (Bulk Admin Transfer)
+   *
+   * เปลี่ยน: responsibleId / responsibleName ในทุก Document ของลูกค้า
+   * ไม่แตะ: coldcall_logs — Log ย้อนหลังของแอดมินคนเก่าไม่ถูกเปลี่ยนเลย
+   *
+   * @param {string} fromAdminId - ID แอดมินต้นทาง
+   * @param {string} fromAdminName - ชื่อแอดมินต้นทาง
+   * @param {string} toAdminId - ID แอดมินปลายทาง
+   * @param {string} toAdminName - ชื่อแอดมินปลายทาง
+   * @param {string} [transferredBy='Manager'] - ชื่อผู้ที่ทำการโอน
+   * @param {string[]} [stages=['qualified','customer']] - stage ที่ต้องการโอน
+   * @returns {{ success: boolean, transferred: number }}
+   */
+  async transferAllCustomers(fromAdminId, fromAdminName, toAdminId, toAdminName, transferredBy = 'Manager', stages = ['qualified', 'customer', 'pool'], onProgress = null) {
+    if (!fromAdminId || !toAdminId) throw new Error('ต้องระบุแอดมินต้นทางและปลายทาง');
+    if (fromAdminId === toAdminId) throw new Error('ต้นทางและปลายทางต้องไม่ใช่คนเดียวกัน');
+
+    try {
+      // 1. ดึงเบอร์ทั้งหมดของแอดมินคนเก่า (ทุก stage ที่ระบุ)
+      const allDocRefs = [];
+      for (const stage of stages) {
+        const q = query(
+          collection(db, CUSTOMERS_COL),
+          where('responsibleId', '==', fromAdminId),
+          where('stage', '==', stage)
+        );
+        const snap = await getDocs(q);
+        snap.docs.forEach(d => allDocRefs.push(d.ref));
+      }
+
+      if (allDocRefs.length === 0) {
+        if (onProgress) onProgress(0, 0);
+        return { success: true, transferred: 0 };
+      }
+
+      const total = allDocRefs.length;
+
+      // 2. อัปเดตทีละ Batch สูงสุด 499 docs (Firestore limit = 500)
+      const BATCH_SIZE = 499;
+      let totalTransferred = 0;
+      for (let i = 0; i < allDocRefs.length; i += BATCH_SIZE) {
+        const chunk = allDocRefs.slice(i, i + BATCH_SIZE);
+        const wb = writeBatch(db);
+        chunk.forEach(ref => {
+          wb.update(ref, {
+            responsibleId: toAdminId,
+            responsibleName: toAdminName,
+            updatedAt: serverTimestamp()
+          });
+        });
+        await wb.commit();
+        totalTransferred += chunk.length;
+        if (onProgress) onProgress(totalTransferred, total);
+      }
+
+      // 3. บันทึก Log การโอนย้าย 1 รายการ (ไม่แตะ Log เก่าของแอดมินคนเก่า)
+      await this.logActivity({
+        adminId: 'manager',
+        adminName: transferredBy,
+        action: `โอนย้ายเบอร์ ${totalTransferred} รายการ จาก "${fromAdminName}" ไปยัง "${toAdminName}"`,
+        type: 'transfer',
+        snapshot: {
+          fromAdminId,
+          fromAdminName,
+          toAdminId,
+          toAdminName,
+          transferredCount: totalTransferred,
+          stages
+        }
+      });
+
+      return { success: true, transferred: totalTransferred };
+    } catch (err) {
+      console.error('transferAllCustomers error:', err);
+      throw err;
+    }
+  },
+
+  /**
+   * โอนย้ายเบอร์บางส่วน (N รายการ) จากแอดมินคนหนึ่งไปอีกคน
+   * ดึง qualified ก่อน → customer → pool ถ้ายังไม่ครบ
+   * @param {string} fromAdminId
+   * @param {string} fromAdminName
+   * @param {string} toAdminId
+   * @param {string} toAdminName
+   * @param {string} transferredBy
+   * @param {number} limitCount  - จำนวนที่ต้องการย้าย (0 = ทั้งหมด)
+   * @param {Function} onProgress - callback(transferred, total)
+   */
+  async transferNCustomers(fromAdminId, fromAdminName, toAdminId, toAdminName, transferredBy = 'Manager', limitCount = 0, onProgress = null) {
+    if (!fromAdminId || !toAdminId) throw new Error('ต้องระบุแอดมินต้นทางและปลายทาง');
+    if (fromAdminId === toAdminId) throw new Error('ต้นทางและปลายทางต้องไม่ใช่คนเดียวกัน');
+
+    try {
+      // ดึง qualified ก่อน → customer → pool
+      const allDocRefs = [];
+      for (const stage of ['qualified', 'customer', 'pool']) {
+        const q = query(
+          collection(db, CUSTOMERS_COL),
+          where('responsibleId', '==', fromAdminId),
+          where('stage', '==', stage)
+        );
+        const snap = await getDocs(q);
+        snap.docs.forEach(d => allDocRefs.push(d.ref));
+        if (limitCount > 0 && allDocRefs.length >= limitCount) break;
+      }
+
+      if (allDocRefs.length === 0) {
+        if (onProgress) onProgress(0, 0);
+        return { success: true, transferred: 0 };
+      }
+
+      // ตัดตาม limit (0 = ทั้งหมด)
+      const targetRefs = limitCount > 0 ? allDocRefs.slice(0, limitCount) : allDocRefs;
+      const total = targetRefs.length;
+
+      const BATCH_SIZE = 499;
+      let totalTransferred = 0;
+      for (let i = 0; i < targetRefs.length; i += BATCH_SIZE) {
+        const chunk = targetRefs.slice(i, i + BATCH_SIZE);
+        const wb = writeBatch(db);
+        chunk.forEach(ref => {
+          wb.update(ref, {
+            responsibleId: toAdminId,
+            responsibleName: toAdminName,
+            updatedAt: serverTimestamp()
+          });
+        });
+        await wb.commit();
+        totalTransferred += chunk.length;
+        if (onProgress) onProgress(totalTransferred, total);
+      }
+
+      await this.logActivity({
+        adminId: 'manager',
+        adminName: transferredBy,
+        action: `โอนย้ายเบอร์ ${totalTransferred} รายการ จาก "${fromAdminName}" ไปยัง "${toAdminName}"`,
+        type: 'transfer',
+        snapshot: { fromAdminId, fromAdminName, toAdminId, toAdminName, transferredCount: totalTransferred }
+      });
+
+      return { success: true, transferred: totalTransferred };
+    } catch (err) {
+      console.error('transferNCustomers error:', err);
+      throw err;
+    }
+  },
+
+  /**
+   * ดูจำนวน Lead ของแอดมิน แยก qualified/customer/pool
+   */
+  async getAdminLeadCount(adminId) {
+    try {
+      const [qSnap, cSnap, pSnap] = await Promise.all([
+        getDocs(query(collection(db, CUSTOMERS_COL), where('responsibleId', '==', adminId), where('stage', '==', 'qualified'))),
+        getDocs(query(collection(db, CUSTOMERS_COL), where('responsibleId', '==', adminId), where('stage', '==', 'customer'))),
+        getDocs(query(collection(db, CUSTOMERS_COL), where('responsibleId', '==', adminId), where('stage', '==', 'pool'))),
+      ]);
+      return { 
+        qualified: qSnap.size, 
+        customer: cSnap.size, 
+        pool: pSnap.size, 
+        total: qSnap.size + cSnap.size + pSnap.size 
+      };
+    } catch (err) {
+      console.error('getAdminLeadCount error:', err);
+      return { qualified: 0, customer: 0, pool: 0, total: 0 };
+    }
+  },
+
   async unassignRandomCustomers(count = 50) {
     try {
       const q = query(collection(db, CUSTOMERS_COL), where("responsibleId", "!=", null), limit(count));
@@ -1374,6 +2149,8 @@ export const leadService = {
           updatedAt: serverTimestamp(),
           responsibleId: null,
           responsibleName: 'Unassigned',
+          freqAmount: 1,
+          freqUnit: 'สัปดาห์',
           stats: { callCount: 0 }
         });
       }
@@ -1406,6 +2183,8 @@ export const leadService = {
         updatedAt: serverTimestamp(),
         responsibleId: null,
         responsibleName: 'Unassigned',
+        freqAmount: 1,
+        freqUnit: 'สัปดาห์',
         stats: { callCount: 0 }
       });
       return true;
@@ -1429,38 +2208,84 @@ export const leadService = {
 
   async updateCustomer(customerId, updates) {
     const customerRef = doc(db, CUSTOMERS_COL, customerId);
+    const currentCustomer = (await getDoc(customerRef)).data();
     
     // Smart Stage Transition Logic
     let stage = updates.stage;
     
-    // 1. If status is "Closed Won" (สั่งซื้อซ้ำสำเร็จ/ส่งเสนอราคาเรียบร้อย), move to 'customer' stage
+    // 1. If status is "Closed Won" (สั่งซื้อซ้ำสำเร็จ/ส่งเสนอราคาเรียบร้อย/ปิดดีลสำเร็จ/Closed Won), move to 'customer' stage
     const isWonStatus = updates.status?.includes('สั่งซื้อซ้ำ') || 
                         updates.status?.includes('ส่งเสนอราคา') ||
+                        updates.status?.includes('ปิดดีลสำเร็จ') ||
+                        updates.status?.includes('Closed Won') ||
                         updates.formState?.status?.includes('สั่งซื้อซ้ำ') ||
-                        updates.formState?.status?.includes('ส่งเสนอราคา');
+                        updates.formState?.status?.includes('ส่งเสนอราคา') ||
+                        updates.formState?.status?.includes('ปิดดีลสำเร็จ') ||
+                        updates.formState?.status?.includes('Closed Won');
 
     if (isWonStatus) {
       stage = 'customer';
+    } else if (currentCustomer && currentCustomer.stage === 'pool' && (updates.formState?.score !== undefined || updates.bot_score !== undefined)) {
+      // 2. If it's in pool and gets a score (from admin or bot), move to 'qualified'
+      stage = 'qualified';
     }
-    
-    // 2. If it's in pool and gets a score (from admin or bot), move to 'qualified'
-    const currentCustomer = (await getDoc(customerRef)).data();
-    if (currentCustomer && currentCustomer.stage === 'pool' && (updates.formState?.score !== undefined || updates.bot_score !== undefined)) {
-        stage = 'qualified';
-    }
+
+    const mockStr = localStorage.getItem('mockTodayStr');
+    const mockToday = getMockToday();
 
     const finalUpdates = {
       ...updates,
-      updatedAt: serverTimestamp()
+      updatedAt: mockStr ? mockToday : serverTimestamp()
     };
     if (stage) finalUpdates.stage = stage;
+    if (stage === 'customer') {
+      if (!updates.lastOrderDate && (!currentCustomer || !currentCustomer.lastOrderDate)) {
+        finalUpdates.lastOrderDate = mockToday.toLocaleDateString('th-TH');
+      }
+
+      // Calculate frequency on 2nd order
+      if (isWonStatus && currentCustomer && currentCustomer.lastOrderDate && currentCustomer.stage === 'customer') {
+        const parseThaiDate = (dateStr) => {
+          if (!dateStr) return null;
+          if (dateStr.includes('/')) {
+            const parts = dateStr.split('/');
+            const y = parseInt(parts[2], 10);
+            return new Date(y > 2400 ? y - 543 : y, parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+          }
+          if (dateStr.includes('-')) {
+             const parts = dateStr.split('-');
+             return new Date(parts[0], parseInt(parts[1], 10) - 1, parts[2]);
+          }
+          const parsed = new Date(dateStr);
+          return isNaN(parsed.getTime()) ? null : parsed;
+        };
+        
+        const firstOrder = parseThaiDate(currentCustomer.lastOrderDate);
+        const secondOrder = mockStr ? mockToday : new Date();
+        if (firstOrder && !isNaN(firstOrder.getTime())) {
+          const diffTime = Math.abs(secondOrder - firstOrder);
+          const diffWeeks = Math.round(diffTime / (1000 * 60 * 60 * 24 * 7));
+          finalUpdates.freqAmount = Math.max(1, diffWeeks);
+          finalUpdates.freqUnit = 'สัปดาห์';
+          finalUpdates.freqCalculatedAt = mockStr ? mockToday : serverTimestamp();
+        }
+      }
+    }
 
     // Record won/lost timestamps for retention tracking
     if (isWonStatus && currentCustomer?.stage !== 'customer') {
-      finalUpdates.wonAt = serverTimestamp();
-    } else if (updates.status?.includes('ไม่สนใจ') || updates.status?.includes('ปิดเครื่อง') ||
-               updates.formState?.status?.includes('ไม่สนใจ') || updates.formState?.status?.includes('ปิดเครื่อง')) {
-      finalUpdates.lostAt = serverTimestamp();
+      finalUpdates.wonAt = mockStr ? mockToday : serverTimestamp();
+    } else if (
+      // Only mark lostAt for NON-retention leads (pool/qualified).
+      // For retention customers (stage='customer'), the status dropdown is for notes only
+      // — it does NOT indicate the customer is truly "lost".
+      currentCustomer?.stage !== 'customer' &&
+      (updates.status?.includes('ไม่สนใจ') || updates.status?.includes('ปิดเครื่อง') ||
+       updates.status?.includes('โทรไม่รับ') || updates.status?.includes('โทรไม่ซื้อ') ||
+       updates.formState?.status?.includes('ไม่สนใจ') || updates.formState?.status?.includes('ปิดเครื่อง') ||
+       updates.formState?.status?.includes('โทรไม่รับ') || updates.formState?.status?.includes('โทรไม่ซื้อ'))
+    ) {
+      finalUpdates.lostAt = mockStr ? mockToday : serverTimestamp();
     }
 
     // Sync Frequency to Days for dashboard logic
@@ -1470,8 +2295,67 @@ export const leadService = {
       finalUpdates.followUpFrequencyDays = unit === 'เดือน' ? amt * 30 : amt * 7;
     }
 
+    Object.keys(finalUpdates).forEach(key => {
+      if (finalUpdates[key] === undefined) {
+        delete finalUpdates[key];
+      }
+    });
+
     await updateDoc(customerRef, finalUpdates);
     return { success: true, newStage: stage };
+  },
+
+  async deleteCustomerSoft(customerId, originalStage) {
+    try {
+      const customerRef = doc(db, CUSTOMERS_COL, customerId);
+      await updateDoc(customerRef, {
+        stage: 'trash',
+        trashOriginalStage: originalStage || 'pool',
+        deletedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      return { success: true };
+    } catch (err) {
+      console.error("Soft Delete Customer Error:", err);
+      throw err;
+    }
+  },
+
+  async restoreCustomer(customerId) {
+    try {
+      const customerRef = doc(db, CUSTOMERS_COL, customerId);
+      const snap = await getDoc(customerRef);
+      if (!snap.exists()) {
+        throw new Error("ไม่พบรายชื่อลูกค้านี้");
+      }
+      const data = snap.data();
+      const targetStage = data.trashOriginalStage || 'pool';
+      await updateDoc(customerRef, {
+        stage: targetStage,
+        trashOriginalStage: deleteField(),
+        deletedAt: deleteField(),
+        updatedAt: serverTimestamp()
+      });
+      return { success: true };
+    } catch (err) {
+      console.error("Restore Customer Error:", err);
+      throw err;
+    }
+  },
+
+  async deleteCustomerPermanent(customerId) {
+    try {
+      console.warn("Permanent delete is disabled by system policy. Performing soft delete instead.");
+      return await this.deleteCustomerSoft(customerId, 'pool');
+    } catch (err) {
+      console.error("Permanent Delete Customer Error:", err);
+      throw err;
+    }
+  },
+
+  async cleanupExpiredTrash() {
+    // Disabled by system policy. Trash data is kept indefinitely.
+    return { success: true, deletedCount: 0 };
   },
 
   async getAdminTaskSummary(adminId) {
@@ -2013,6 +2897,249 @@ export const leadService = {
     } catch (e) {
       console.error("injectUnassignedMockupRetentionCustomers error:", e);
       throw e;
+    }
+  }
+,
+  async getAllRegularCustomers(adminId = null) {
+    try {
+      let q = query(collection(db, CUSTOMERS_COL), where("stage", "==", "customer"));
+      if (adminId && adminId !== 'all') {
+        q = query(q, where("responsibleId", "==", adminId));
+      }
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+    } catch (err) {
+      console.error("getAllRegularCustomers error:", err);
+      return [];
+    }
+  },
+
+  // --- Lost Customers & Weekly Reports ---
+  async getLostCustomers(adminId = null) {
+    try {
+      let q = query(collection(db, CUSTOMERS_COL), where("stage", "==", "customer"));
+      if (adminId && adminId !== 'all') {
+        q = query(q, where("responsibleId", "==", adminId));
+      }
+      const snapshot = await getDocs(q);
+      const allCustomers = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+
+      const inactiveStatuses = new Set([
+        'ปิดเครื่อง / ติดต่อไม่ได้',
+        'ไม่สนใจ',
+        'เลิกขาย/ปิดกิจการ',
+        'ยังไม่สะดวกคุยตอนนี้',
+        'ติดต่อยาก / รอสายยาว',
+        'ลูกค้ามีสินค้าเหลือในสต็อก',
+        'ต้องการของแถม/โปรโมชั่นพิเศษ',
+        'โทรไม่รับ',
+        'โทรไม่ซื้อ'
+      ]);
+
+      // Helper: parse Thai date string (D/M/YYYY or D/M/YYYY_BE) to JS Date
+      const parseThaiDateLocal = (dateStr) => {
+        if (!dateStr) return null;
+        if (typeof dateStr !== 'string') {
+          const d = dateStr.toDate ? dateStr.toDate() : new Date(dateStr);
+          return isNaN(d.getTime()) ? null : d;
+        }
+        if (dateStr.includes('/')) {
+          const parts = dateStr.split('/');
+          if (parts.length === 3) {
+            const d = parseInt(parts[0], 10);
+            const m = parseInt(parts[1], 10) - 1;
+            let y = parseInt(parts[2], 10);
+            if (y > 2400) y -= 543;
+            return new Date(y, m, d);
+          }
+        }
+        if (dateStr.includes('-')) {
+          const parts = dateStr.split('-');
+          if (parts.length === 3) {
+            const y = parseInt(parts[0], 10);
+            const m = parseInt(parts[1], 10) - 1;
+            const d = parseInt(parts[2], 10);
+            return new Date(y, m, d);
+          }
+        }
+        const parsed = new Date(dateStr);
+        return isNaN(parsed.getTime()) ? null : parsed;
+      };
+
+      // Helper: check if a customer is overdue (followed up but no new order within freq cycle)
+      const isOverdueNoOrder = (c) => {
+        // Must have been contacted at least once
+        const lastContact = parseThaiDateLocal(c.lastCallDate) || parseThaiDateLocal(c.lastActionDate);
+        if (!lastContact) return false;
+
+        // Must have a lastOrderDate baseline to measure against
+        const lastOrder = parseThaiDateLocal(c.lastOrderDate);
+        if (!lastOrder) return false;
+
+        // Calculate due date from last order + frequency
+        const freqAmount = parseInt(c.freqAmount) || 1;
+        const freqUnit = c.freqUnit || 'สัปดาห์';
+        const dueDate = new Date(lastOrder);
+        if (freqUnit === 'เดือน') {
+          dueDate.setMonth(dueDate.getMonth() + freqAmount);
+        } else {
+          dueDate.setDate(dueDate.getDate() + freqAmount * 7);
+        }
+
+        const now = new Date();
+        now.setHours(23, 59, 59, 999);
+
+        // Customer is overdue: due date has passed, and status is NOT a won status
+        const wonStatuses = ['สั่งซื้อซ้ำสำเร็จ', 'สั่งซื้อซ้ำ', 'สั่งซื้อผ่านตัวแทนจำหน่าย', 'สั่งซื้อตรงกับโรงงาน/CLM', 'สั่งซื้อผ่านช่องทาง Shopee/Zort/Online'];
+        const isWon = wonStatuses.some(s => (c.status || '').includes(s));
+        
+        return dueDate < now && !isWon;
+      };
+
+      const lostCustomers = allCustomers.filter(c => {
+        // Case 1: status is explicitly inactive
+        // For retention customers (stage='customer'), selecting an inactive status in the dropdown
+        // is just a note/reason — they're only truly "lost" if they're also overdue.
+        // For pool/qualified leads, inactive status alone is enough to be "lost".
+        if (c.status && inactiveStatuses.has(c.status) && c.stage !== 'customer') return true;
+        // Case 2: has been followed up but order is overdue (missed purchase cycle)
+        // This applies to all stages including retention customers.
+        if (isOverdueNoOrder(c)) return true;
+        return false;
+      });
+
+      const reasonsBreakdown = {};
+      inactiveStatuses.forEach(s => { reasonsBreakdown[s] = 0; });
+      
+      lostCustomers.forEach(c => {
+        if (c.status) {
+          reasonsBreakdown[c.status] = (reasonsBreakdown[c.status] || 0) + 1;
+        }
+      });
+
+      return {
+        data: lostCustomers,
+        total: lostCustomers.length,
+        reasonsBreakdown
+      };
+    } catch (err) {
+      console.error("getLostCustomers error:", err);
+      return { data: [], total: 0, reasonsBreakdown: {} };
+    }
+  },
+
+  async saveWeeklyLostReport(count, reasonsBreakdown) {
+    try {
+      const now = new Date();
+      const year = now.getFullYear();
+      
+      const firstDayOfYear = new Date(year, 0, 1);
+      const pastDaysOfYear = (now - firstDayOfYear) / 86400000;
+      const weekNum = Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
+      const weekId = `${year}-W${String(weekNum).padStart(2, '0')}`;
+
+      const currentDay = now.getDay();
+      const diffToMonday = now.getDate() - (currentDay === 0 ? 6 : currentDay - 1);
+      const startOfWeek = new Date(now.setDate(diffToMonday));
+      startOfWeek.setHours(0,0,0,0);
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 6);
+      endOfWeek.setHours(23,59,59,999);
+
+      const reportRef = doc(db, WEEKLY_REPORTS_COL, weekId);
+      const payload = {
+        weekId,
+        startDate: Timestamp.fromDate(startOfWeek),
+        endDate: Timestamp.fromDate(endOfWeek),
+        lostCount: count,
+        reasons: reasonsBreakdown,
+        updatedAt: serverTimestamp()
+      };
+
+      await setDoc(reportRef, payload, { merge: true });
+      return { success: true, weekId };
+    } catch (err) {
+      console.error("saveWeeklyLostReport error:", err);
+      return { success: false, error: err.message };
+    }
+  },
+
+  async getWeeklyLostReports() {
+    try {
+      const q = query(collection(db, WEEKLY_REPORTS_COL), orderBy("updatedAt", "desc"), limit(20));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          ...data,
+          id: doc.id,
+          startDate: data.startDate?.toDate ? data.startDate.toDate().toLocaleDateString('th-TH') : data.startDate,
+          endDate: data.endDate?.toDate ? data.endDate.toDate().toLocaleDateString('th-TH') : data.endDate,
+        };
+      });
+    } catch (err) {
+      console.error("getWeeklyLostReports error:", err);
+      return [];
+    }
+  },
+
+  // --- Manager Dashboard Data Aggregation ---
+  async generateAndSaveWeeklySnapshot(weekStartDate, weekEndDate) {
+    try {
+      // For now, this is a placeholder that will generate the snapshot.
+      // In production, this might be a Cloud Function triggered by cron.
+      // We will generate the stats and save them to 'weekly_dashboard_stats'
+      const stats = await this.getStats(weekStartDate, 'week');
+      
+      const year = weekStartDate.getFullYear();
+      const firstDayOfYear = new Date(year, 0, 1);
+      const pastDaysOfYear = (weekStartDate - firstDayOfYear) / 86400000;
+      const weekNum = Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
+      const weekId = `${year}-W${String(weekNum).padStart(2, '0')}`;
+
+      const snapshotData = {
+        weekId,
+        periodLabel: stats.periodLabel || weekId,
+        startDate: Timestamp.fromDate(weekStartDate),
+        endDate: Timestamp.fromDate(weekEndDate),
+        funnel: stats.weeklyFunnelFlow || { botProcessed: 0, toQualified: 0, toDecision: 0, toCustomer: 0 },
+        growthStats: stats.growthStats || { newCustomersCount: 0, pendingDecisionCount: 0, regularFollowUps: 0, regularLostCount: 0 },
+        weeklyStats: stats.weeklyStats || { efficiency: '0%', followUps: 0, newCustomers: 0, leaderboard: [], adminDetails: {} },
+        categoryBreakdown: stats.categoryBreakdown || {},
+        newLeadsToday: stats.newLeadsToday || 0,
+        createdAt: serverTimestamp(),
+      };
+
+      const docRef = doc(db, 'weekly_dashboard_stats', weekId);
+      await setDoc(docRef, snapshotData, { merge: true });
+      return { success: true, weekId };
+    } catch (err) {
+      console.error("generateAndSaveWeeklySnapshot error:", err);
+      return { success: false, error: err.message };
+    }
+  },
+
+  async getHistoricalDashboardStats(refDate, limitCount = 6) {
+    try {
+      const year = refDate.getFullYear();
+      const firstDayOfYear = new Date(year, 0, 1);
+      const pastDaysOfYear = (refDate - firstDayOfYear) / 86400000;
+      const weekNum = Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
+      const refWeekId = `${year}-W${String(weekNum).padStart(2, '0')}`;
+
+      const q = query(
+        collection(db, 'weekly_dashboard_stats'),
+        where("weekId", "<=", refWeekId),
+        orderBy("weekId", "desc"),
+        limit(limitCount)
+      );
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map(doc => doc.data());
+      // Return oldest to newest for charts
+      return data.reverse();
+    } catch (err) {
+      console.error("getHistoricalDashboardStats error:", err);
+      return [];
     }
   }
 };

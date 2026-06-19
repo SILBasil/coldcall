@@ -1,15 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Users, AlertCircle, Loader2, PhoneCall, QrCode, X, MessageSquare, Star, Info, ChevronDown } from 'lucide-react';
+import { Search, Users, AlertCircle, Loader2, PhoneCall, QrCode, X, MessageSquare, Star, Info, ChevronDown, Edit2, Trash2, CheckSquare, Square } from 'lucide-react';
 import { leadServicePaginated } from '../../services/leadService_Paginated';
+import { leadService } from '../../services/leadService';
 import RetentionTableView from './RetentionTableView';
 import QRCodeModal from '../common/QRCodeModal';
+import EditCustomerModal from '../common/EditCustomerModal';
+import { dialog } from '../../utils/dialog';
 
-const CustomerListView_Paginated = ({ type, activeTab, setActiveTab, currentAdminId, role, onCall }) => {
+const CustomerListView_Paginated = ({ type, activeTab, setActiveTab, currentAdminId, role, showToast, onCall }) => {
   const isManager = role === 'manager';
   const [qrModal, setQrModal] = useState({ open: false, phone: '', name: '' });
   const [drawerData, setDrawerData] = useState(null);
   
   const [leads, setLeads] = useState([]);
+  const [selected, setSelected] = useState([]);
+  const [selectedCustomerForEdit, setSelectedCustomerForEdit] = useState(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [assignedThisWeekIds, setAssignedThisWeekIds] = useState(new Set());
   const [completedThisWeekIds, setCompletedThisWeekIds] = useState(new Set());
   const [loading, setLoading] = useState(true);
@@ -25,7 +31,8 @@ const CustomerListView_Paginated = ({ type, activeTab, setActiveTab, currentAdmi
 
   useEffect(() => {
     setFilterStatus(type === 'bot-pool' ? 'all' : 'todo');
-  }, [type]);
+    setSelected([]);
+  }, [type, currentAdminId, activeTab]);
 
   useEffect(() => {
     fetchLeads(false);
@@ -85,10 +92,13 @@ const CustomerListView_Paginated = ({ type, activeTab, setActiveTab, currentAdmi
          setCompletedThisWeekIds(new Set(logs.completedFullList || []));
       }
 
+      // Filter out soft deleted items
+      const nonDeleted = data.filter(l => l.stage !== 'trash');
+
       if (isLoadMore) {
-         setLeads(prev => [...prev, ...data]);
+         setLeads(prev => [...prev, ...nonDeleted]);
       } else {
-         setLeads(data);
+         setLeads(nonDeleted);
       }
 
       setLastDoc(newLastDoc);
@@ -107,11 +117,12 @@ const CustomerListView_Paginated = ({ type, activeTab, setActiveTab, currentAdmi
     setIsSearchingDB(true);
     try {
         const results = await leadServicePaginated.searchCustomerByPhone(searchTerm);
-        if (results.length > 0) {
-            setLeads(results);
+        const nonDeleted = results.filter(l => l.stage !== 'trash');
+        if (nonDeleted.length > 0) {
+            setLeads(nonDeleted);
             setHasMore(false);
         } else {
-            alert("ไม่พบข้อมูลลูกค้ารายนี้ในระบบ");
+            await dialog.alert({ title: 'ไม่พบข้อมูล', text: 'ไม่พบข้อมูลลูกค้ารายนี้ในระบบ', icon: 'info' });
         }
     } catch (error) {
         console.error(error);
@@ -124,6 +135,78 @@ const CustomerListView_Paginated = ({ type, activeTab, setActiveTab, currentAdmi
       setSearchTerm('');
       fetchLeads(false);
   }
+
+  const handleSoftDeleteSingle = async (customer) => {
+    const confirmDelete = await dialog.confirm({
+      title: 'ย้ายรายชื่อไปที่ถังขยะ?',
+      text: `คุณต้องการย้ายรายชื่อ "${customer.name || customer.phone}" ไปที่ถังขยะใช่หรือไม่?\n\n*หมายเหตุ: รายชื่อในถังขยะจะถูกเก็บไว้เป็นเวลา 30 วันก่อนจะถูกลบออกถาวรโดยอัตโนมัติ`,
+      isDanger: true
+    });
+    if (!confirmDelete) return;
+
+    try {
+      setLoading(true);
+      await leadService.deleteCustomerSoft(customer.id || customer.phone, customer.stage || 'pool');
+      if (showToast) showToast("ย้ายรายชื่อไปที่ถังขยะเรียบร้อยแล้ว", "success");
+      
+      await leadService.logActivity({
+        adminId: 'manager',
+        adminName: 'Manager',
+        action: `ย้ายรายชื่อ "${customer.name || customer.phone}" ไปที่ถังขยะ`,
+        type: 'soft-delete',
+        customerId: customer.id || customer.phone,
+        customerName: customer.name,
+        customerPhone: customer.phone,
+        customerStage: 'trash'
+      });
+
+      setSelected(prev => prev.filter(id => id !== (customer.id || customer.phone)));
+      fetchLeads(false);
+    } catch (err) {
+      console.error(err);
+      if (showToast) showToast("เกิดข้อผิดพลาดในการลบรายชื่อ", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBulkSoftDelete = async () => {
+    const confirmDelete = await dialog.confirm({
+      title: 'ย้ายรายชื่อที่เลือกไปที่ถังขยะ?',
+      text: `คุณต้องการย้ายรายชื่อที่เลือกทั้งหมด ${selected.length} รายการไปที่ถังขยะใช่หรือไม่?\n\n*หมายเหตุ: รายชื่อในถังขยะจะถูกเก็บไว้เป็นเวลา 30 วันก่อนจะถูกลบออกถาวรโดยอัตโนมัติ`,
+      isDanger: true
+    });
+    if (!confirmDelete) return;
+
+    try {
+      setLoading(true);
+      
+      const promises = selected.map(async (id) => {
+        const customer = leads.find(l => l.id === id);
+        const originalStage = customer?.stage || 'pool';
+        await leadService.deleteCustomerSoft(id, originalStage);
+      });
+      
+      await Promise.all(promises);
+
+      await leadService.logActivity({
+        adminId: 'manager',
+        adminName: 'Manager',
+        action: `ย้ายรายชื่อจำนวน ${selected.length} รายการไปที่ถังขยะ (Bulk)`,
+        type: 'soft-delete-bulk',
+        details: `IDs: ${selected.join(', ')}`
+      });
+
+      if (showToast) showToast(`ย้ายรายชื่อ ${selected.length} รายการไปที่ถังขยะเรียบร้อยแล้ว`, "success");
+      setSelected([]);
+      fetchLeads(false);
+    } catch (err) {
+      console.error(err);
+      if (showToast) showToast("เกิดข้อผิดพลาดในการลบหลายรายชื่อ", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredData = leads.filter(l => {
     if (!searchTerm) {
@@ -198,13 +281,13 @@ const CustomerListView_Paginated = ({ type, activeTab, setActiveTab, currentAdmi
              <>
                <button 
                  onClick={() => setFilterStatus('todo')}
-                 className={`px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all cursor-pointer ${filterStatus === 'todo' ? 'bg-white text-indigo-600 shadow-sm border border-slate-100' : 'text-slate-600 hover:text-slate-800'}`}
+                 className={`inline-flex items-center justify-center min-w-[175px] px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-all cursor-pointer border ${filterStatus === 'todo' ? 'bg-white text-indigo-600 shadow-sm border-slate-100' : 'text-slate-600 hover:text-slate-800 border-transparent'}`}
                >
                  งานที่ต้องทำ ({leads.filter(l => assignedThisWeekIds.has(l.id) && !completedThisWeekIds.has(l.id)).length})
                </button>
                <button 
                  onClick={() => setFilterStatus('due')}
-                 className={`px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all cursor-pointer ${filterStatus === 'due' ? 'bg-emerald-500 text-white shadow-md' : 'text-slate-600 hover:text-slate-800'}`}
+                 className={`inline-flex items-center justify-center min-w-[200px] px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-all cursor-pointer border ${filterStatus === 'due' ? 'bg-emerald-500 text-white shadow-md border-emerald-500' : 'text-slate-600 hover:text-slate-800 border-transparent'}`}
                >
                  งานที่ติดตามแล้ว ({leads.filter(l => assignedThisWeekIds.has(l.id) && completedThisWeekIds.has(l.id)).length})
                </button>
@@ -212,24 +295,45 @@ const CustomerListView_Paginated = ({ type, activeTab, setActiveTab, currentAdmi
            )}
            <button 
              onClick={() => setFilterStatus('all')}
-             className={`px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all cursor-pointer ${filterStatus === 'all' ? 'bg-white text-slate-800 shadow-sm border border-slate-100' : 'text-slate-600 hover:text-slate-800'}`}
+             className={`inline-flex items-center justify-center min-w-[130px] px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-all cursor-pointer border ${filterStatus === 'all' ? 'bg-white text-slate-800 shadow-sm border-slate-100' : 'text-slate-600 hover:text-slate-800 border-transparent'}`}
            >
              ทั้งหมด ({leads.length})
            </button>
-        </div>
+         </div>
       </div>
 
       <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden font-sans">
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
+          <table className="w-full border-collapse table-fixed">
             <thead>
               <tr className="bg-slate-50/50 border-b border-slate-100">
-                <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic">No. / ชื่อลูกค้า</th>
-                <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic">เบอร์โทรศัพท์</th>
-                <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic">สถานะ / ผู้รับผิดชอบ</th>
-                <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic">Coldcall Rating</th>
-                <th className="px-6 py-4 text-center text-xs font-black text-slate-600 uppercase tracking-widest italic">คะแนนบอท</th>
-                {type !== 'bot-pool' && <th className="px-6 py-4 text-right text-xs font-black text-slate-600 uppercase tracking-widest italic">จัดการ</th>}
+                {isManager && (
+                  <th className="px-4 py-4 w-12 text-center">
+                    <div 
+                      onClick={() => {
+                        const allIds = filteredData.map(l => l.id);
+                        if (allIds.length === 0) return;
+                        if (allIds.every(id => selected.includes(id))) {
+                          setSelected(prev => prev.filter(id => !allIds.includes(id)));
+                        } else {
+                          setSelected(prev => Array.from(new Set([...prev, ...allIds])));
+                        }
+                      }}
+                      className="flex items-center justify-center cursor-pointer hover:text-indigo-600 transition-colors"
+                    >
+                      {filteredData.length > 0 && filteredData.every(l => selected.includes(l.id))
+                        ? <CheckSquare size={16} className="text-indigo-600" />
+                        : <Square size={16} />
+                      }
+                    </div>
+                  </th>
+                )}
+                <th className={`px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-widest ${type === 'bot-pool' ? 'w-[35%]' : 'w-[30%]'}`}>No. / ชื่อลูกค้า</th>
+                <th className={`px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-widest ${type === 'bot-pool' ? 'w-[23%]' : 'w-[20%]'}`}>เบอร์โทรศัพท์</th>
+                <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-widest w-[20%]">สถานะ / ผู้รับผิดชอบ</th>
+                <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-widest w-[15%]">Coldcall Rating</th>
+                <th className="px-6 py-4 text-center text-xs font-bold text-slate-600 uppercase tracking-widest w-[7%]">คะแนนบอท</th>
+                <th className="px-6 py-4 text-right text-xs font-bold text-slate-600 uppercase tracking-widest w-[10%]">จัดการ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -245,6 +349,21 @@ const CustomerListView_Paginated = ({ type, activeTab, setActiveTab, currentAdmi
                       className={`transition-colors group ${(!readonly && !isManager) ? 'cursor-pointer hover:bg-slate-50/50' : 'cursor-default'}`}
                       onClick={() => !readonly && !isManager && onCall(l, readonly)}
                     >
+                      {isManager && (
+                        <td className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                          <div 
+                            onClick={() => {
+                              setSelected(prev => prev.includes(l.id) ? prev.filter(id => id !== l.id) : [...prev, l.id]);
+                            }}
+                            className="flex items-center justify-center cursor-pointer hover:text-indigo-600 transition-colors"
+                          >
+                            {selected.includes(l.id) 
+                              ? <CheckSquare size={16} className="text-indigo-600" />
+                              : <Square size={16} />
+                            }
+                          </div>
+                        </td>
+                      )}
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                            <div className="w-10 h-10 rounded-xl bg-slate-50 flex flex-col items-center justify-center border border-slate-100 shadow-inner group-hover:scale-105 transition-transform duration-300">
@@ -256,8 +375,8 @@ const CustomerListView_Paginated = ({ type, activeTab, setActiveTab, currentAdmi
                                 {l.name || 'ไม่ระบุชื่อ'}
                                 {isAssigned && !isCompleted && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />}
                               </div>
-                              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5 italic flex items-center gap-1.5">
-                                 คลิกเพื่อดูรายละเอียด / โทรติดต่อ 👈
+                              <div className="text-[10px] font-medium text-slate-400 uppercase tracking-widest mt-0.5 flex items-center gap-1.5">
+                                 {readonly ? 'ข้อมูล Read-only' : 'คลิกเพื่อดูรายละเอียด / โทรติดต่อ'}
                               </div>
                            </div>
                         </div>
@@ -272,7 +391,7 @@ const CustomerListView_Paginated = ({ type, activeTab, setActiveTab, currentAdmi
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col gap-1.5">
-                           <span className={`w-fit px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest italic ${isCompleted ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-600'} shadow-sm border`}>
+                           <span className={`w-fit px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-widest ${isCompleted ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'} shadow-sm border`}>
                               {l.status || 'รอดำเนินการ'}
                            </span>
                            {l.responsibleName && l.responsibleName !== 'Unassigned' ? (
@@ -294,48 +413,60 @@ const CustomerListView_Paginated = ({ type, activeTab, setActiveTab, currentAdmi
                         </div>
                       </td>
                       <td className="px-6 py-4 text-center">
-                        <div className="inline-flex items-center justify-center min-w-[32px] h-8 bg-amber-50 rounded-xl border border-amber-100 text-amber-600 font-black text-sm">
-                           {l.bot_score}/5
-                        </div>
-                      </td>
-                      {type !== 'bot-pool' && !isManager && (
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-2 text-sm font-bold">
-                            {!isManager && (
+                         <div className="inline-flex items-center justify-center min-w-[32px] h-8 bg-amber-50 rounded-xl border border-amber-100 text-amber-600 font-bold text-sm">
+                            {l.bot_score != null ? `${l.bot_score}/5` : '-'}
+                         </div>
+                       </td>
+                      <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-2 text-sm font-bold">
+                          {isManager ? (
+                            <>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  onCall(l, readonly);
+                                  setSelectedCustomerForEdit(l);
+                                  setIsEditModalOpen(true);
                                 }}
-                                className={`p-2.5 rounded-xl transition-all shadow-sm ${readonly ? 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none border border-slate-100' : 'bg-primary/10 text-primary hover:bg-primary hover:text-white active:scale-95 border border-primary/5'}`}
-                                disabled={readonly}
-                                title={readonly ? 'ดูอย่างเดียว' : 'โทรติดต่อ / บันทึกประวัติ'}
+                                className="p-2.5 rounded-xl bg-slate-50 text-slate-600 hover:bg-slate-900 hover:text-white transition-all shadow-sm border border-slate-200 active:scale-95 cursor-pointer flex items-center justify-center"
+                                title="แก้ไขข้อมูลลูกค้า"
                               >
-                                <PhoneCall size={18} />
+                                <Edit2 size={16} />
                               </button>
-                            )}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSoftDeleteSingle(l);
+                                }}
+                                className="p-2.5 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white transition-all shadow-sm border border-rose-100 active:scale-95 cursor-pointer flex items-center justify-center"
+                                title="ย้ายไปถังขยะ"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </>
+                          ) : (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setQrModal({ open: true, phone: l.phone, name: l.name });
+                                onCall(l, readonly);
                               }}
-                              className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white transition-all shadow-sm border border-emerald-100/50 active:scale-95"
-                              title="สแกน QR Code สำหรับโทร"
+                              className={`p-2.5 rounded-xl transition-all shadow-sm ${readonly ? 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none border border-slate-100' : 'bg-primary/10 text-primary hover:bg-primary hover:text-white active:scale-95 border border-primary/5'}`}
+                              disabled={readonly}
+                              title={readonly ? 'ดูอย่างเดียว' : 'โทรติดต่อ / บันทึกประวัติ'}
                             >
-                              <QrCode size={18} />
+                              <PhoneCall size={18} />
                             </button>
-                          </div>
-                        </td>
-                      )}
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   );
                 })
               ) : (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-600">
+                  <td colSpan={isManager ? 7 : 6} className="px-6 py-12 text-center text-slate-600">
                     <div className="flex flex-col items-center gap-2 opacity-50">
                        <AlertCircle size={40} className="stroke-[1px]" />
-                       <div className="text-sm font-black uppercase tracking-widest italic">ไม่พบข้อมูลรายชื่อลูกค้า</div>
+                       <div className="text-sm font-bold uppercase tracking-widest">ไม่พบข้อมูลรายชื่อลูกค้า</div>
                     </div>
                   </td>
                 </tr>
@@ -486,6 +617,47 @@ const CustomerListView_Paginated = ({ type, activeTab, setActiveTab, currentAdmi
         phone={qrModal.phone}
         name={qrModal.name}
       />
+
+      <EditCustomerModal
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setSelectedCustomerForEdit(null);
+        }}
+        customer={selectedCustomerForEdit}
+        onSave={() => {
+          fetchLeads(false);
+        }}
+        showToast={showToast}
+      />
+
+      {/* Floating Bulk Actions Bar */}
+      {isManager && selected.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-6 py-4 rounded-3xl shadow-2xl border border-slate-800 flex items-center gap-6 animate-in slide-in-from-bottom-12 duration-300">
+          <div className="flex items-center gap-2">
+            <span className="w-6 h-6 rounded-full bg-indigo-500 flex items-center justify-center text-xs font-black">
+              {selected.length}
+            </span>
+            <span className="text-xs font-black tracking-wider uppercase text-slate-300">รายการที่เลือก</span>
+          </div>
+          <div className="h-5 w-px bg-slate-800" />
+          <div className="flex gap-2">
+            <button
+              onClick={() => handleBulkSoftDelete()}
+              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black shadow-lg transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 border-none"
+            >
+              <Trash2 size={14} />
+              ย้ายไปถังขยะ ({selected.length} รายการ)
+            </button>
+            <button
+              onClick={() => setSelected([])}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl text-xs font-black transition-all active:scale-95 cursor-pointer border-none"
+            >
+              ยกเลิก
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
