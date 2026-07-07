@@ -194,95 +194,69 @@ const AdminDashboardView = ({ adminId, onNextLead, onSelectCustomer }) => {
   }
 
   return (
-    <div className={`space-y-6 animate-in fade-in duration-700 max-w-[1400px] mx-auto pb-8 relative ${refreshing ? 'opacity-50 pointer-events-none' : ''}`}>
+    <div className={`space-y-4 animate-in fade-in duration-700 max-w-[1400px] mx-auto pb-6 relative ${refreshing ? 'opacity-50 pointer-events-none' : ''}`}>
       
       {/* Header Section */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-4 border-b border-slate-100">
-         <div className="flex items-center gap-3 mb-1">
-            <div className="w-3 h-3 rounded-full bg-indigo-600 animate-pulse shadow-[0_0_10px_rgba(79,70,229,0.5)]" />
-            <span className="text-base font-black text-indigo-600 uppercase tracking-widest italic">แดชบอร์ดระบบแอดมิน (Action Center)</span>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+         <div className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse shadow-[0_0_8px_rgba(79,70,229,0.5)]" />
+            <span className="text-sm font-black text-indigo-600 uppercase tracking-widest italic">แดชบอร์ดแอดมิน (Action Center)</span>
+            {refreshing && <Loader2 size={13} className="text-indigo-400 animate-spin" />}
          </div>
          
-         <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1 bg-white p-2 rounded-2xl shadow-sm border border-slate-100 group relative">
-               <button onClick={() => navigatePeriod(-1)} className="p-2.5 hover:bg-slate-50 rounded-xl transition-all text-slate-600 hover:text-indigo-600" title="ช่วงเวลาก่อนหน้า">
-                 <ChevronLeft size={22} />
+         <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 bg-white p-1.5 rounded-xl shadow-sm border border-slate-100 group relative">
+               <button onClick={() => navigatePeriod(-1)} className="p-1.5 hover:bg-slate-50 rounded-lg transition-all text-slate-500 hover:text-indigo-600">
+                 <ChevronLeft size={16} />
                </button>
-               
-               <div onClick={() => dateInputRef.current?.showPicker()} className="px-6 flex flex-col items-center cursor-pointer hover:bg-slate-50 rounded-xl transition-all py-2 border-x border-transparent hover:border-slate-100">
-                  <div className="text-[12px] font-black text-indigo-600 uppercase tracking-widest italic flex items-center gap-2 group-hover:scale-105 transition-transform">
-                    <Calendar size={14} /> {mode === 'month' ? 'เลือกเดือน' : 'เลือกช่วงสัปดาห์'}
+               <div onClick={() => dateInputRef.current?.showPicker()} className="px-3 flex flex-col items-center cursor-pointer hover:bg-slate-50 rounded-lg transition-all py-1">
+                  <div className="text-[10px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-1">
+                    <Calendar size={11} /> {mode === 'month' ? 'เดือน' : 'สัปดาห์'}
                   </div>
-                  <div className="text-sm font-black text-slate-900 uppercase tracking-tight text-center">{dateRangeStr}</div>
-                  <input ref={dateInputRef} type="date" className="absolute opacity-0 pointer-events-none" onChange={(e) => e.target.value && setBaseDate(new Date(e.target.value))} />
+                  <div className="text-xs font-black text-slate-900 tracking-tight text-center">{dateRangeStr}</div>
+                  <input ref={dateInputRef} type="date" className="absolute opacity-0 pointer-events-none w-0" onChange={(e) => e.target.value && setBaseDate(new Date(e.target.value))} />
                </div>
-
-               <button onClick={() => navigatePeriod(1)} className="p-2.5 hover:bg-slate-50 rounded-xl transition-all text-slate-600 hover:text-indigo-600" title="ช่วงถัดไป">
-                 <ChevronRight size={22} />
-               </button>
-               
-               <div className="w-[1.5px] h-10 bg-slate-100 mx-2" />
-               {/* Week / Month Toggle Pill */}
-               <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1">
-                 <button
-                   onClick={() => { setMode('week'); setBaseDate(new Date()); }}
-                   className={`px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wide transition-all ${
-                     mode === 'week' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                   }`}
-                 >
-                   รายสัปดาห์
-                 </button>
-                 <button
-                   onClick={() => { setMode('month'); setBaseDate(new Date()); }}
-                   className={`px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wide transition-all ${
-                     mode === 'month' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                   }`}
-                 >
-                   รายเดือน
-                 </button>
-               </div>
-               <div className="w-[1.5px] h-10 bg-slate-100 mx-2" />
-               <button onClick={() => setBaseDate(new Date())} className="px-5 py-2.5 text-xs font-black uppercase text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all">Today</button>
-               <div className="w-[1.5px] h-10 bg-slate-100 mx-2" />
-               <button onClick={() => fetchStats(true)} className={`p-2.5 rounded-xl transition-all ${refreshing ? 'text-indigo-600 bg-indigo-50 animate-spin' : 'text-slate-600 hover:text-indigo-600 hover:bg-slate-50'}`} title="รีเฟรชข้อมูล">
-                 <RotateCw size={22} />
+               <button onClick={() => navigatePeriod(1)} className="p-1.5 hover:bg-slate-50 rounded-lg transition-all text-slate-500 hover:text-indigo-600">
+                 <ChevronRight size={16} />
                </button>
             </div>
+            <div className="flex items-center bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm text-[11px] font-black">
+              <button onClick={() => { setMode('week'); setBaseDate(new Date()); }} className={`px-2.5 py-1.5 transition-all ${mode === 'week' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>สัปดาห์</button>
+              <button onClick={() => { setMode('month'); setBaseDate(new Date()); }} className={`px-2.5 py-1.5 transition-all ${mode === 'month' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>เดือน</button>
+            </div>
+            <button onClick={() => setBaseDate(new Date())} className="px-2.5 py-1.5 text-[11px] font-black bg-white border border-slate-200 rounded-xl text-slate-500 hover:text-indigo-600 transition-all shadow-sm">วันนี้</button>
+            <button onClick={() => fetchStats(true)} className={`p-1.5 rounded-xl border border-slate-200 bg-white shadow-sm ${refreshing ? 'animate-spin text-indigo-500' : 'text-slate-400 hover:text-indigo-600'} transition-all`}><RotateCw size={13} /></button>
          </div>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {todayStats.map((s, i) => (
-          <div key={i} className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 hover:shadow-md transition-all group">
-            <div className="flex items-center gap-4 mb-4">
-              <div className={`p-3 rounded-2xl ${s.bg} ${s.color} transition-transform group-hover:scale-110`}>
-                <s.Icon size={26} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-[11px] font-black text-slate-600 uppercase tracking-widest truncate">{s.label}</div>
-                <div className={`text-2xl font-black ${s.color} tracking-tighter truncate`}>{s.value}</div>
-              </div>
+          <div key={i} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-all group flex items-center gap-3">
+            <div className={`p-2.5 rounded-xl ${s.bg} ${s.color} shrink-0 transition-transform group-hover:scale-105`}>
+              <s.Icon size={18} />
             </div>
-            <div className="text-[12px] font-bold text-slate-700 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100/50 italic truncate">
-              {s.sub}
+            <div className="flex-1 min-w-0">
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider truncate">{s.label}</div>
+              <div className={`text-xl font-black ${s.color} tracking-tighter leading-tight`}>{s.value}</div>
+              <div className="text-[10px] font-bold text-slate-400 italic truncate">{s.sub}</div>
             </div>
           </div>
         ))}
       </div>
 
       {/* Progress Bar Section */}
-      <div className="bg-white p-7 rounded-3xl shadow-sm border border-slate-100 flex flex-col md:flex-row items-center gap-8">
-        <div className="flex items-center justify-center w-20 h-20 rounded-2xl bg-indigo-50 border border-indigo-100/50 shrink-0 shadow-inner">
-          <Award size={36} className="text-indigo-600" />
+      <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-5">
+        <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100/50 shrink-0 shadow-inner">
+          <Award size={22} className="text-indigo-600" />
         </div>
         <div className="flex-1 w-full relative">
-          <div className="flex justify-between items-end mb-3">
+          <div className="flex justify-between items-center mb-2">
             <div>
-              <div className="text-lg font-black text-slate-900 uppercase tracking-tighter">ความคืบหน้าภาพรวมประจำสัปดาห์ <span className="text-[12px] text-slate-600 font-bold ml-2">({dateRangeStr})</span></div>
-              <div className="text-sm font-black text-slate-600 uppercase tracking-widest italic mt-1">สัดส่วนงานที่ต้องทำทั้งหมด (ลูกค้ารายใหม่ และ ติดตามลูกค้ารายเดิม)</div>
+              <div className="text-sm font-black text-slate-900 uppercase tracking-tighter">ความคืบหน้าภาพรวม <span className="text-[11px] text-slate-500 font-bold ml-1">({dateRangeStr})</span></div>
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider italic">สัดส่วนงานที่ต้องทำ (ลูกค้าใหม่ + ติดตามลูกค้าเดิม)</div>
             </div>
-            <div className="text-3xl font-black text-indigo-600 tracking-tighter">
+            <div className="text-2xl font-black text-indigo-600 tracking-tighter">
                {(() => {
                  if (!workloadOverview) return 0;
                  const tNew = workloadOverview.newLeads.totalInHand || 0;
@@ -295,7 +269,7 @@ const AdminDashboardView = ({ adminId, onNextLead, onSelectCustomer }) => {
                })()}%
             </div>
           </div>
-          <div className="w-full h-5 bg-slate-100 rounded-full overflow-hidden flex shadow-inner">
+          <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden flex shadow-inner">
             {(() => {
                  if (!workloadOverview) return null;
                  const tNew = workloadOverview.newLeads.totalInHand || 0;
@@ -308,8 +282,8 @@ const AdminDashboardView = ({ adminId, onNextLead, onSelectCustomer }) => {
                  const procRet = (dRet / total) * 100;
                  return (
                    <>
-                     <div className="bg-indigo-500 h-full transition-all duration-1000 origin-left" style={{ width: `${procNew}%` }} />
-                     <div className="bg-sky-400 h-full transition-all duration-1000 origin-left" style={{ width: `${procRet}%` }} />
+                     <div className="bg-indigo-500 h-full transition-all duration-700 origin-left" style={{ width: `${procNew}%` }} />
+                     <div className="bg-sky-400 h-full transition-all duration-700 origin-left" style={{ width: `${procRet}%` }} />
                    </>
                  );
             })()}
@@ -318,13 +292,13 @@ const AdminDashboardView = ({ adminId, onNextLead, onSelectCustomer }) => {
       </div>
 
       {/* Call Outcome Breakdown */}
-      <div className="bg-white p-7 rounded-3xl shadow-sm border border-slate-100 flex flex-col md:flex-row items-center gap-8">
-         <div className="flex items-center justify-center w-20 h-20 rounded-2xl bg-amber-50 border border-amber-100/50 shrink-0 shadow-inner group">
-            <PhoneCall size={36} className="text-amber-600 group-hover:scale-110 transition-transform" />
+      <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-5">
+         <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-amber-50 border border-amber-100/50 shrink-0 shadow-inner">
+            <PhoneCall size={22} className="text-amber-600" />
          </div>
          <div className="flex-1 w-full relative">
-            <div className="text-lg font-black text-slate-900 uppercase tracking-tighter mb-4">สัดส่วนผลลัพธ์การโทร (Call Outcome)</div>
-            <div className="w-full h-8 bg-slate-100 rounded-full overflow-hidden flex shadow-inner mb-4 relative">
+            <div className="text-sm font-black text-slate-900 uppercase tracking-tighter mb-2">สัดส่วนผลลัพธ์การโทร (Call Outcome)</div>
+            <div className="w-full h-5 bg-slate-100 rounded-full overflow-hidden flex shadow-inner mb-2 relative">
               {(() => {
                 const outcomes = summary?.outcomes?.callOutcomes || [];
                 const total = outcomes.reduce((acc, curr) => acc + curr.count, 0);
@@ -345,13 +319,13 @@ const AdminDashboardView = ({ adminId, onNextLead, onSelectCustomer }) => {
                 ));
               })()}
             </div>
-            <div className="flex flex-wrap items-center gap-6">
+            <div className="flex flex-wrap items-center gap-4">
               {summary?.outcomes?.callOutcomes?.map((o, idx) => {
                  const bgMap = { 'emerald': 'bg-emerald-500', 'amber': 'bg-amber-500', 'rose': 'bg-rose-500' };
                  return (
-                   <div key={idx} className="flex items-center gap-2">
-                     <div className={`w-3.5 h-3.5 rounded-full ${bgMap[o.color] || 'bg-slate-500'} shadow-sm`} />
-                     <span className="text-[11px] font-black text-slate-600 uppercase tracking-widest">{o.label} <span className="text-slate-400 ml-1">({o.count})</span></span>
+                   <div key={idx} className="flex items-center gap-1.5">
+                     <div className={`w-2.5 h-2.5 rounded-full ${bgMap[o.color] || 'bg-slate-500'}`} />
+                     <span className="text-[10px] font-black text-slate-600 uppercase tracking-wider">{o.label} <span className="text-slate-400">({o.count})</span></span>
                    </div>
                  );
               })}
@@ -359,111 +333,73 @@ const AdminDashboardView = ({ adminId, onNextLead, onSelectCustomer }) => {
          </div>
       </div>
 
-      {/* Customer Stage Overview — 3 Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+      {/* Customer Stage Overview — 3 Cards (Compact) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
 
         {/* Card 1: ลูกค้าใหม่ (Pool) */}
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden group hover:shadow-md transition-all">
-          <div className="h-1.5 bg-gradient-to-r from-indigo-400 to-indigo-600 rounded-t-3xl" />
-          <div className="p-7 flex flex-col gap-5">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden group hover:shadow-md transition-all">
+          <div className="h-1 bg-gradient-to-r from-indigo-400 to-indigo-600" />
+          <div className="p-4 flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <div className="p-3 bg-indigo-50 rounded-2xl group-hover:scale-110 transition-transform">
-                <UserPlus size={26} className="text-indigo-600" />
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-indigo-50 rounded-xl"><UserPlus size={18} className="text-indigo-600" /></div>
+                <div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider">ลูกค้าใหม่ทั้งหมด</div>
+                  <div className="text-3xl font-black text-indigo-600 tracking-tighter leading-none">{workloadOverview?.pool?.totalInHand ?? '—'}</div>
+                </div>
               </div>
-              <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest bg-indigo-50 px-3 py-1 rounded-full">POOL</span>
+              <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded-full">POOL</span>
             </div>
-            {/* ตัวเลขหลัก = ลูกค้าใหม่ทั้งหมด (backlog + สัปดาห์นี้) */}
-            <div>
-              <div className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-1">ลูกค้าใหม่ทั้งหมด</div>
-              <div className="text-6xl font-black text-indigo-600 tracking-tighter leading-none">
-                {workloadOverview?.pool?.totalInHand ?? '—'}
-              </div>
-              <div className="text-xs font-bold text-slate-400 mt-2 italic">ยอดรวม (ตกค้าง + มอบหมายสัปดาห์นี้)</div>
-            </div>
-            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-50">
-              <div className="flex flex-col bg-indigo-50/50 rounded-xl p-2.5">
-                <span className="text-[9px] font-black text-indigo-500 uppercase mb-1">มอบหมายสัปดาห์นี้</span>
-                <span className="text-xl font-black text-indigo-600">{workloadOverview?.pool?.assignedThisWeek ?? '—'}</span>
-              </div>
-              <div className="flex flex-col bg-rose-50/50 rounded-xl p-2.5">
-                <span className="text-[9px] font-black text-rose-400 uppercase mb-1">ตกค้างเดือนนี้</span>
-                <span className="text-xl font-black text-rose-500">{workloadOverview?.pool?.backlogCount ?? '—'}</span>
-              </div>
-              <div className="flex flex-col bg-emerald-50 rounded-xl p-2.5 border border-emerald-100">
-                <span className="text-[9px] font-black text-emerald-600 uppercase mb-1">ทำแล้วซื้อ (ปิดยอดสำเร็จ)</span>
-                <span className="text-xl font-black text-emerald-700">{workloadOverview?.pool?.completedWon ?? '—'} <span className="text-[10px] text-emerald-500">ราย</span></span>
-              </div>
-              <div className="flex flex-col bg-slate-50 rounded-xl p-2.5 border border-slate-100">
-                <span className="text-[9px] font-black text-slate-500 uppercase mb-1">ทำแล้วรอตัดสินใจ (ยังไม่ซื้อ)</span>
-                <span className="text-xl font-black text-slate-700">{workloadOverview?.pool?.completedNotWon ?? '—'} <span className="text-[10px] text-slate-400">ราย</span></span>
-              </div>
+            <div className="grid grid-cols-2 gap-1.5 pt-2 border-t border-slate-50">
+              <div className="bg-indigo-50/50 rounded-lg p-2"><div className="text-[8px] font-black text-indigo-500 uppercase">มอบหมายสัปดาห์นี้</div><div className="text-base font-black text-indigo-600">{workloadOverview?.pool?.assignedThisWeek ?? '—'}</div></div>
+              <div className="bg-rose-50/50 rounded-lg p-2"><div className="text-[8px] font-black text-rose-400 uppercase">ตกค้าง</div><div className="text-base font-black text-rose-500">{workloadOverview?.pool?.backlogCount ?? '—'}</div></div>
+              <div className="bg-emerald-50 rounded-lg p-2 border border-emerald-100"><div className="text-[8px] font-black text-emerald-600 uppercase">ปิดยอดแล้ว</div><div className="text-base font-black text-emerald-700">{workloadOverview?.pool?.completedWon ?? '—'}</div></div>
+              <div className="bg-slate-50 rounded-lg p-2 border border-slate-100"><div className="text-[8px] font-black text-slate-500 uppercase">รอตัดสินใจ</div><div className="text-base font-black text-slate-700">{workloadOverview?.pool?.completedNotWon ?? '—'}</div></div>
             </div>
           </div>
         </div>
 
         {/* Card 2: ลูกค้ารอตัดสินใจ (Qualified) */}
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden group hover:shadow-md transition-all">
-          <div className="h-1.5 bg-gradient-to-r from-amber-400 to-orange-500 rounded-t-3xl" />
-          <div className="p-7 flex flex-col gap-5">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden group hover:shadow-md transition-all">
+          <div className="h-1 bg-gradient-to-r from-amber-400 to-orange-500" />
+          <div className="p-4 flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <div className="p-3 bg-amber-50 rounded-2xl group-hover:scale-110 transition-transform">
-                <Hourglass size={26} className="text-amber-500" />
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-amber-50 rounded-xl"><Hourglass size={18} className="text-amber-500" /></div>
+                <div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider">รอตัดสินใจทั้งหมด</div>
+                  <div className="text-3xl font-black text-amber-500 tracking-tighter leading-none">{workloadOverview?.qualified?.totalInHand ?? '—'}</div>
+                </div>
               </div>
-              <span className="text-[10px] font-black text-amber-400 uppercase tracking-widest bg-amber-50 px-3 py-1 rounded-full">QUALIFIED</span>
+              <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest bg-amber-50 px-2 py-0.5 rounded-full">QUALIFIED</span>
             </div>
-            {/* ตัวเลขหลัก = ยอดรวม qualified ทั้งหมด */}
-            <div>
-              <div className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-1">ลูกค้ารอตัดสินใจทั้งหมด</div>
-              <div className="text-6xl font-black text-amber-500 tracking-tighter leading-none">
-                {workloadOverview?.qualified?.totalInHand ?? '—'}
-              </div>
-              <div className="text-xs font-bold text-slate-400 mt-2 italic">ติดต่อแล้ว อยู่ระหว่างพิจารณา</div>
-            </div>
-            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-50">
-              <div className="flex flex-col bg-amber-50/50 rounded-xl p-2.5">
-                <span className="text-[9px] font-black text-amber-500 uppercase mb-1">มอบหมาย / ย้ายมาสัปดาห์นี้</span>
-                <span className="text-xl font-black text-amber-600">{workloadOverview?.qualified?.assignedThisWeek ?? '—'}</span>
-              </div>
-              <div className="flex flex-col bg-rose-50/50 rounded-xl p-2.5">
-                <span className="text-[9px] font-black text-rose-400 uppercase mb-1">ตกค้างเดือนนี้</span>
-                <span className="text-xl font-black text-rose-500">{workloadOverview?.qualified?.backlogCount ?? '—'}</span>
-              </div>
-              <div className="flex flex-col bg-emerald-50 rounded-xl p-2.5 border border-emerald-100">
-                <span className="text-[9px] font-black text-emerald-600 uppercase mb-1">ทำแล้วซื้อ (ปิดยอดสำเร็จ)</span>
-                <span className="text-xl font-black text-emerald-700">{workloadOverview?.qualified?.completedWon ?? '—'} <span className="text-[10px] text-emerald-500">ราย</span></span>
-              </div>
-              <div className="flex flex-col bg-slate-50 rounded-xl p-2.5 border border-slate-100">
-                <span className="text-[9px] font-black text-slate-500 uppercase mb-1">ทำแล้วติดตามต่อ (ยังไม่ซื้อ)</span>
-                <span className="text-xl font-black text-slate-700">{workloadOverview?.qualified?.completedNotWon ?? '—'} <span className="text-[10px] text-slate-400">ราย</span></span>
-              </div>
+            <div className="grid grid-cols-2 gap-1.5 pt-2 border-t border-slate-50">
+              <div className="bg-amber-50/50 rounded-lg p-2"><div className="text-[8px] font-black text-amber-500 uppercase">มอบหมายสัปดาห์นี้</div><div className="text-base font-black text-amber-600">{workloadOverview?.qualified?.assignedThisWeek ?? '—'}</div></div>
+              <div className="bg-rose-50/50 rounded-lg p-2"><div className="text-[8px] font-black text-rose-400 uppercase">ตกค้าง</div><div className="text-base font-black text-rose-500">{workloadOverview?.qualified?.backlogCount ?? '—'}</div></div>
+              <div className="bg-emerald-50 rounded-lg p-2 border border-emerald-100"><div className="text-[8px] font-black text-emerald-600 uppercase">ปิดยอดแล้ว</div><div className="text-base font-black text-emerald-700">{workloadOverview?.qualified?.completedWon ?? '—'}</div></div>
+              <div className="bg-slate-50 rounded-lg p-2 border border-slate-100"><div className="text-[8px] font-black text-slate-500 uppercase">ติดตามต่อ</div><div className="text-base font-black text-slate-700">{workloadOverview?.qualified?.completedNotWon ?? '—'}</div></div>
             </div>
           </div>
         </div>
 
         {/* Card 3: ลูกค้าประจำ (Retention) */}
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden group hover:shadow-md transition-all">
-          <div className="h-1.5 bg-gradient-to-r from-emerald-400 to-teal-500 rounded-t-3xl" />
-          <div className="p-7 flex flex-col gap-5">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden group hover:shadow-md transition-all">
+          <div className="h-1 bg-gradient-to-r from-emerald-400 to-teal-500" />
+          <div className="p-4 flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <div className="p-3 bg-emerald-50 rounded-2xl group-hover:scale-110 transition-transform">
-                <Star size={26} className="text-emerald-600" />
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-emerald-50 rounded-xl"><Star size={18} className="text-emerald-600" /></div>
+                <div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider">ลูกค้าประจำของฉัน</div>
+                  <div className="text-3xl font-black text-emerald-600 tracking-tighter leading-none">{workloadOverview?.retention?.customerTotal ?? '—'}</div>
+                </div>
               </div>
-              <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-50 px-3 py-1 rounded-full">RETENTION</span>
+              <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-50 px-2 py-0.5 rounded-full">RETENTION</span>
             </div>
-            {/* ตัวเลขหลัก = ลูกค้าประจำทั้งหมดของ admin คนนี้ (all-time) */}
-            <div>
-              <div className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-1">ลูกค้าประจำของฉัน</div>
-              <div className="text-6xl font-black text-emerald-600 tracking-tighter leading-none">
-                {workloadOverview?.retention?.customerTotal ?? '—'}
-              </div>
-              <div className="text-xs font-bold text-slate-400 mt-2 italic">ลูกค้าที่ซื้อแล้วทั้งหมดในพอร์ต</div>
-            </div>
-            {/* sub stat เดียว: ติดตามไปแล้วสัปดาห์นี้ */}
             <div className="pt-2 border-t border-slate-50">
-              <div className="flex flex-col bg-emerald-50/70 rounded-xl p-3">
-                <span className="text-[9px] font-black text-emerald-600 uppercase mb-1">ติดตามไปแล้วสัปดาห์นี้</span>
-                <span className="text-3xl font-black text-emerald-700">{workloadOverview?.retention?.completed ?? '—'}</span>
-                <span className="text-[10px] text-emerald-500 mt-1">ราย (ไม่ว่าจะซื้อซ้ำหรือยัง)</span>
+              <div className="bg-emerald-50/70 rounded-lg p-3 flex items-center justify-between">
+                <div><div className="text-[8px] font-black text-emerald-600 uppercase">ติดตามไปแล้วสัปดาห์นี้</div><div className="text-[10px] text-emerald-500 mt-0.5">ราย (ทั้งซื้อซ้ำและยัง)</div></div>
+                <span className="text-2xl font-black text-emerald-700">{workloadOverview?.retention?.completed ?? '—'}</span>
               </div>
             </div>
           </div>
@@ -473,27 +409,27 @@ const AdminDashboardView = ({ adminId, onNextLead, onSelectCustomer }) => {
 
 
       {/* Footer / Summary Charts Area */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* Weekly Activity Breakdown Chart */}
-        <div className="lg:col-span-8 bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden flex flex-col min-h-[450px]">
-          <div className="px-7 py-5 border-b border-slate-50 flex items-center justify-between bg-slate-50/20">
-            <div className="flex items-center gap-4">
-               <div className="p-2.5 bg-indigo-50 rounded-2xl">
-                  <TrendingUp size={22} className="text-indigo-500" />
+        <div className="lg:col-span-8 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col">
+          <div className="px-5 py-3 border-b border-slate-50 flex items-center justify-between bg-slate-50/20">
+            <div className="flex items-center gap-3">
+               <div className="p-2 bg-indigo-50 rounded-xl">
+                  <TrendingUp size={16} className="text-indigo-500" />
                </div>
                <div>
-                  <div className="text-base font-black text-slate-900 uppercase tracking-tighter italic">ประสิทธิภาพรายวัน (Daily Tracking)</div>
-                  <p className="text-xs font-black text-indigo-600 uppercase tracking-widest mt-1 italic">สัปดาห์ปัจจุบัน: {dateRangeStr}</p>
+                  <div className="text-sm font-black text-slate-900 uppercase tracking-tighter italic">ประสิทธิภาพรายวัน (Daily Tracking)</div>
+                  <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest italic">สัปดาห์ปัจจุบัน: {dateRangeStr}</p>
                </div>
             </div>
-            <div className="flex gap-5 bg-white px-5 py-2.5 rounded-2xl border border-slate-100 shadow-sm">
-               <div className="flex items-center gap-2.5"><div className="w-3.5 h-3.5 rounded bg-sky-400 shadow-sm shadow-sky-100" /><span className="text-xs font-black text-slate-500 uppercase">งานลูกค้าประจำ</span></div>
-               <div className="flex items-center gap-2.5"><div className="w-3.5 h-3.5 rounded bg-indigo-500 shadow-sm shadow-indigo-100" /><span className="text-xs font-black text-slate-500 uppercase">เบอร์ใหม่/รอตัดสินใจ</span></div>
+            <div className="flex gap-4 bg-white px-4 py-2 rounded-xl border border-slate-100 shadow-sm">
+               <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded bg-sky-400" /><span className="text-[10px] font-black text-slate-500 uppercase">งานลูกค้าประจำ</span></div>
+               <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded bg-indigo-500" /><span className="text-[10px] font-black text-slate-500 uppercase">เบอร์ใหม่/รอตัดสินใจ</span></div>
             </div>
           </div>
           
-          <div className="p-8 flex-1 flex flex-col justify-end">
-            <div className="relative h-64 w-full">
+          <div className="p-5 flex-1 flex flex-col justify-end">
+            <div className="relative h-44 w-full">
               {/* Horizontal Grid lines */}
               <div className="absolute inset-0 flex flex-col justify-between pt-4 pb-12 pointer-events-none">
                 {[0, 1, 2, 3, 4].map(i => (
@@ -501,32 +437,27 @@ const AdminDashboardView = ({ adminId, onNextLead, onSelectCustomer }) => {
                 ))}
               </div>
               
-              <div className="flex items-end justify-between h-full w-full px-4 lg:px-12 relative z-10 pb-10">
+              <div className="flex items-end justify-between h-full w-full px-2 relative z-10 pb-8">
                 {summary?.daily?.map((d, i) => {
                   const maxVal = Math.max(...(summary?.daily||[]).map(x => Math.max(x.followUps, x.newLeads)), 10);
                   const hFollow = Math.round((d.followUps / maxVal) * 100);
                   const hNew = Math.round((d.newLeads / maxVal) * 100);
-                  
                   return (
-                    <div key={i} className="flex-1 flex flex-col items-center gap-5 group h-full justify-end">
-                      <div className="w-full flex justify-center gap-2 md:gap-3 items-end h-[90%] relative">
-                          {/* Tooltip */}
-                          <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[11px] font-black px-4 py-2.5 rounded-2xl opacity-0 group-hover:opacity-100 transition-all z-20 pointer-events-none whitespace-nowrap shadow-2xl border border-slate-700">
-                             ติดต่อกลับ: {d.followUps} | เบอร์ใหม่: {d.newLeads} ราย
-                             <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-900 rotate-45 border-r border-b border-slate-700" />
+                    <div key={i} className="flex-1 flex flex-col items-center gap-2 group h-full justify-end">
+                      <div className="w-full flex justify-center gap-1.5 items-end h-[90%] relative">
+                          <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] font-black px-3 py-1.5 rounded-xl opacity-0 group-hover:opacity-100 transition-all z-20 pointer-events-none whitespace-nowrap shadow-xl">
+                             ↩ {d.followUps} | ✦ {d.newLeads}
                           </div>
-                          
-                          <div className="relative w-5 md:w-7 lg:w-10 group/bar flex flex-col justify-end h-full">
-                            <div className="w-full bg-gradient-to-t from-sky-500 to-sky-300 rounded-t-lg rounded-b-[2px] transition-all duration-1000 ease-out origin-bottom shadow-lg shadow-sky-100 group-hover/bar:brightness-110" style={{ height: `${hFollow}%` }} />
+                          <div className="relative w-4 md:w-6 group/bar flex flex-col justify-end h-full">
+                            <div className="w-full bg-gradient-to-t from-sky-500 to-sky-300 rounded-t-md transition-all duration-700 origin-bottom" style={{ height: `${hFollow}%` }} />
                           </div>
-                          
-                          <div className="relative w-5 md:w-7 lg:w-10 group/bar flex flex-col justify-end h-full">
-                            <div className="w-full bg-gradient-to-t from-indigo-600 to-indigo-400 rounded-t-lg rounded-b-[2px] transition-all duration-1000 ease-out origin-bottom shadow-lg shadow-indigo-100 group-hover/bar:brightness-110" style={{ height: `${hNew}%` }} />
+                          <div className="relative w-4 md:w-6 group/bar flex flex-col justify-end h-full">
+                            <div className="w-full bg-gradient-to-t from-indigo-600 to-indigo-400 rounded-t-md transition-all duration-700 origin-bottom" style={{ height: `${hNew}%` }} />
                           </div>
                       </div>
-                  <div className="text-[12px] font-black text-slate-700 uppercase tracking-widest bg-slate-50 px-4 py-2 rounded-xl border border-slate-200/50 flex-shrink-0 shadow-sm">
-                    {d?.day || '-'}
-                  </div>
+                      <div className="text-[10px] font-black text-slate-600 uppercase tracking-wide bg-slate-50 px-2 py-1 rounded-lg border border-slate-200/50 flex-shrink-0">
+                        {d?.day || '-'}
+                      </div>
                     </div>
                   );
                 })}
@@ -536,70 +467,61 @@ const AdminDashboardView = ({ adminId, onNextLead, onSelectCustomer }) => {
         </div>
 
         {/* Detailed Performance Summary Column */}
-        <div className="lg:col-span-4 space-y-6">
-           <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden h-full flex flex-col">
-              <div className="px-7 py-5 border-b border-slate-50 flex items-center gap-4 bg-slate-50/20">
-                 <div className="p-2.5 bg-amber-50 rounded-2xl text-amber-500"><Database size={22} /></div>
-                 <h4 className="text-base font-black text-slate-900 uppercase tracking-tighter italic">สรุปผลการปิดการขาย (สัปดาห์นี้)</h4>
+        <div className="lg:col-span-4">
+           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col">
+              <div className="px-5 py-3 border-b border-slate-50 flex items-center gap-3 bg-slate-50/20">
+                 <div className="p-2 bg-amber-50 rounded-xl text-amber-500"><Database size={16} /></div>
+                 <h4 className="text-sm font-black text-slate-900 uppercase tracking-tighter italic">สรุปผลการปิดการขาย</h4>
               </div>
-              <div className="p-6 space-y-6 flex-1">
-                 <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 bg-emerald-50 rounded-3xl border border-emerald-100/50 shadow-sm">
-                       <div className="text-[10px] font-black text-emerald-600 uppercase mb-1 tracking-widest">ORDERED / WON</div>
-                       <div className="text-2xl font-black text-emerald-900 leading-tight">{(summary?.outcomes?.lead?.won || 0) + (summary?.outcomes?.retention?.ordered || 0)} ราย</div>
+              <div className="p-4 space-y-4 flex-1">
+                 <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-100/50">
+                       <div className="text-[9px] font-black text-emerald-600 uppercase mb-1">ORDERED / WON</div>
+                       <div className="text-xl font-black text-emerald-900">{(summary?.outcomes?.lead?.won || 0) + (summary?.outcomes?.retention?.ordered || 0)} ราย</div>
                     </div>
-                    <div className="p-4 bg-rose-50 rounded-3xl border border-rose-100/50 shadow-sm">
-                       <div className="text-[10px] font-black text-rose-600 uppercase mb-1 tracking-widest">DENIED / LOST</div>
-                       <div className="text-2xl font-black text-rose-900 leading-tight">{(summary?.outcomes?.lead?.lost || 0) + (summary?.outcomes?.retention?.notInterested || 0)} ราย</div>
+                    <div className="p-3 bg-rose-50 rounded-2xl border border-rose-100/50">
+                       <div className="text-[9px] font-black text-rose-600 uppercase mb-1">DENIED / LOST</div>
+                       <div className="text-xl font-black text-rose-900">{(summary?.outcomes?.lead?.lost || 0) + (summary?.outcomes?.retention?.notInterested || 0)} ราย</div>
                     </div>
                  </div>
 
-                 <div className="space-y-3">
-                    <div className="text-xs font-black text-slate-400 uppercase tracking-widest italic flex items-center gap-2 mb-2">
-                       <Database size={14} /> ปัญหาและปฏิเสธจากลูกค้า (Top 3 Reasons)
+                 <div className="space-y-2">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                       <Database size={12} /> เหตุผลปฏิเสธ (Top 3)
                     </div>
                     {summary?.reasons?.leadClosedLost?.slice(0, 3).map((r, idx) => (
-                       <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100/50 hover:border-indigo-200 transition-colors">
-                          <span className="text-sm font-bold text-slate-700 truncate mr-3">{r.reason}</span>
-                          <span className="text-xs font-black text-slate-900 bg-white px-3 py-1 rounded-lg border border-slate-200 shadow-sm">{r.count} ราย</span>
+                       <div key={idx} className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-100/50">
+                          <span className="text-xs font-bold text-slate-700 truncate mr-2">{r.reason}</span>
+                          <span className="text-[10px] font-black text-slate-900 bg-white px-2 py-0.5 rounded-md border border-slate-200">{r.count} ราย</span>
                        </div>
                     ))}
                     {(!summary?.reasons?.leadClosedLost || summary.reasons.leadClosedLost.length === 0) && (
-                       <div className="text-sm font-bold text-slate-300 italic text-center py-6 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">ไม่มีข้อมูลเหตุผลปิดการขาย</div>
+                       <div className="text-xs font-bold text-slate-300 italic text-center py-4 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">ไม่มีข้อมูลเหตุผลปิดการขาย</div>
                     )}
                  </div>
 
-                   <div className="mt-auto pt-6 border-t border-slate-100 flex flex-col gap-3">
-                      <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                         <Users size={14} /> เขียนรายงานและสะท้อนปัญหาประจำสัปดาห์
-                      </h4>
-                      <textarea 
-                         value={reportNote}
-                         onChange={e => setReportNote(e.target.value)}
-                         placeholder="อธิบายอุปสรรค เหตุผลที่ลูกค้าปฏิเสธส่วนใหญ่ หรือสิ่งที่ต้องการให้ผู้จัดการช่วยเหลือ..."
-                         className="w-full text-sm p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none resize-none bg-slate-50/50"
-                         rows={3}
-                      />
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
-                         <button 
-                            onClick={submitReport}
-                            disabled={isSubmitting}
-                            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-md shadow-indigo-200 active:scale-95 flex items-center justify-center gap-2"
-                         >
-                            {isSubmitting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-                            {isSubmitting ? 'กำลังส่ง...' : 'ยืนยันส่งรายงานสัปดาห์นี้'}
-                         </button>
-                         
-                         <button 
-                            onClick={handleExportLiveHTML}
-                            disabled={isExporting}
-                            className="w-full py-3 bg-sky-100 hover:bg-sky-200 text-sky-700 disabled:opacity-50 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
-                         >
-                            {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Database size={14} />}
-                            {isExporting ? 'กำลังดาวน์โหลด...' : 'ดาวน์โหลดรายงาน (HTML)'}
-                         </button>
-                      </div>
-                   </div>
+                 <div className="pt-3 border-t border-slate-100 flex flex-col gap-2">
+                    <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                       <Users size={12} /> รายงานประจำสัปดาห์
+                    </h4>
+                    <textarea 
+                       value={reportNote}
+                       onChange={e => setReportNote(e.target.value)}
+                       placeholder="อธิบายอุปสรรค เหตุผลที่ลูกค้าปฏิเสธ..."
+                       className="w-full text-xs p-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none resize-none bg-slate-50/50"
+                       rows={3}
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                       <button onClick={submitReport} disabled={isSubmitting} className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-1.5">
+                          {isSubmitting ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                          {isSubmitting ? 'กำลังส่ง...' : 'ส่งรายงาน'}
+                       </button>
+                       <button onClick={handleExportLiveHTML} disabled={isExporting} className="w-full py-2 bg-sky-100 hover:bg-sky-200 text-sky-700 disabled:opacity-50 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5">
+                          {isExporting ? <Loader2 size={12} className="animate-spin" /> : <Database size={12} />}
+                          {isExporting ? 'กำลังโหลด...' : 'Export HTML'}
+                       </button>
+                    </div>
+                 </div>
               </div>
            </div>
         </div>

@@ -80,7 +80,15 @@ const getYearOptions = () => {
   return yearOptions;
 };
 
+const formatDateKey = (dateObj) => {
+  const y = dateObj.getFullYear();
+  const m = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+  const d = dateObj.getDate().toString().padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, currentAdminId, currentAdminName }) => {
+  const [selectedDateStr, setSelectedDateStr] = useState(() => formatDateKey(getTodayDate()));
   const [gridData, setGridData] = useState(customer.gridData || {});
   const [status, setStatus] = useState(customer.status || 'เสนอขอตัวอย่างสินค้า');
   const [type, setType] = useState(customer.type || 'ยังไม่เคยเปิดบิล');
@@ -93,8 +101,10 @@ const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, 
     facebookUrl: customer.facebookUrl || '' 
   });
   const [remark, setRemark] = useState(customer.remark || '');
+  const [channel, setChannel] = useState('Call');
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyLogs, setHistoryLogs] = useState([]);
+  const [restoredHistoryLog, setRestoredHistoryLog] = useState(null);
   const [nextFollowUp, setNextFollowUp] = useState(null);
   const [freq, setFreq] = useState({ 
     amount: customer.freqAmount || 1, 
@@ -104,6 +114,19 @@ const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, 
   const [calYear, setCalYear] = useState(() => getTodayDate().getFullYear() + 543);
   const [calMonth, setCalMonth] = useState(() => getTodayDate().getMonth());
   const openedAtRef = React.useRef(Date.now());
+
+  useEffect(() => {
+    if (selectedDateStr) {
+      const dailyRemark = gridData[`${selectedDateStr}-remark`];
+      const dailyStatus = gridData[`${selectedDateStr}-status`];
+      const dailyType = gridData[`${selectedDateStr}-type`];
+      
+      setRemark(dailyRemark !== undefined ? dailyRemark : (selectedDateStr === formatDateKey(getTodayDate()) ? (customer.remark || '') : ''));
+      setStatus(dailyStatus !== undefined ? dailyStatus : (customer.status || 'เสนอขอตัวอย่างสินค้า'));
+      setType(dailyType !== undefined ? dailyType : (customer.type || 'ยังไม่เคยเปิดบิล'));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDateStr]);
 
   // Calculate next follow-up week based on latest activity in grid
   useEffect(() => {
@@ -184,24 +207,46 @@ const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, 
       let updatedGrid = { ...gridData };
       let updatedLastOrderDate = customer.lastOrderDate || null;
 
-      // Mark the current week and day as "Followed up" (Checked) when saving
-      const now = getTodayDate();
-      const curMonth = MONTHS_TRACKING[now.getMonth()];
-      const day = now.getDate();
-      const curWeek = day <= 7 ? 1 : day <= 14 ? 2 : day <= 21 ? 3 : 4;
-      
-      updatedGrid[`${curMonth}-${curWeek}-followup`] = true;
-      updatedGrid[`${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}-followup`] = true;
+      // Save daily remark, status, type for the selected date inside the gridData map
+      updatedGrid[`${selectedDateStr}-remark`] = remark;
+      updatedGrid[`${selectedDateStr}-status`] = status;
+      updatedGrid[`${selectedDateStr}-type`] = type;
+
+      // Mark the selected week and day as "Followed up" (Checked) when saving
+      const targetDate = parseThaiDate(selectedDateStr) || getTodayDate();
+      const targetMonthIndex = targetDate.getMonth();
+      const targetMonthName = MONTHS_TRACKING[targetMonthIndex];
+      const targetDay = targetDate.getDate();
+      const targetWeek = targetDay <= 7 ? 1 : targetDay <= 14 ? 2 : targetDay <= 21 ? 3 : 4;
+      const targetYear = targetDate.getFullYear();
+      const targetMonthStr = (targetMonthIndex + 1).toString().padStart(2, '0');
+      const targetDayStr = targetDay.toString().padStart(2, '0');
+      const targetDateKey = `${targetYear}-${targetMonthStr}-${targetDayStr}`;
+
+      updatedGrid[`${targetMonthName}-${targetWeek}-followup`] = true;
+      updatedGrid[`${targetDateKey}-followup`] = true;
 
       // Additionally mark as "Ordered" if status includes 'สั่งซื้อซ้ำ'
       if (status && status.includes('สั่งซื้อซ้ำ')) {
-        updatedGrid[`${curMonth}-${curWeek}-order`] = true;
-        updatedGrid[`${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}-order`] = true;
+        updatedGrid[`${targetMonthName}-${targetWeek}-order`] = true;
+        updatedGrid[`${targetDateKey}-order`] = true;
       }
 
-      // If the current week is marked as ordered in the grid, update lastOrderDate
-      if (updatedGrid[`${curMonth}-${curWeek}-order`]) {
-        updatedLastOrderDate = now.toLocaleDateString('th-TH');
+      // Append to followupLogs
+      let newFollowupLogs = customer.followupLogs || [];
+      newFollowupLogs.push({
+        id: `log-${Date.now()}`,
+        date: targetDateKey,
+        timestamp: new Date().toISOString(),
+        admin: currentAdminName,
+        action: status && status.includes('สั่งซื้อซ้ำ') ? 'order' : 'followup',
+        reason: remark,
+        channel: channel
+      });
+
+      // If the target week is marked as ordered in the grid, update lastOrderDate
+      if (updatedGrid[`${targetMonthName}-${targetWeek}-order`]) {
+        updatedLastOrderDate = targetDate.toLocaleDateString('th-TH');
       }
 
       await leadService.updateCustomer(customer.id || customer.phone, {
@@ -209,11 +254,12 @@ const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, 
         status,
         type,
         remark,
+        followupLogs: newFollowupLogs,
         freqAmount: freq.amount,
         freqUnit: freq.unit,
         lineId: socialLinks.lineId,
         facebookUrl: socialLinks.facebookUrl,
-        lastCallDate: getTodayDate().toLocaleDateString('th-TH'),
+        lastCallDate: targetDate.toLocaleDateString('th-TH'),
         lastOrderDate: updatedLastOrderDate
       });
 
@@ -226,7 +272,7 @@ const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, 
         customerPhone: customer.phone,
         previousStage: 'customer',
         customerStage: 'customer',
-        action: `บันทึกการติดตามลูกค้าเก่า (Retention) - สถานะ: ${status}`,
+        action: `บันทึกการติดตามลูกค้าเก่า (Retention) ประจำวันที่ ${formatThaiDate(selectedDateStr)} - สถานะ: ${status}`,
         type: 'save',
         details: remark,
         duration,
@@ -494,13 +540,14 @@ const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, 
                <HistoryCalendar 
                  logs={historyLogs}
                  onClose={() => setIsHistoryOpen(false)}
-                 onRestore={(snapshot) => {
+                 onRestore={(snapshot, log) => {
                     if (snapshot.gridData) setGridData(snapshot.gridData);
                     if (snapshot.status) setStatus(snapshot.status);
                     if (snapshot.type) setType(snapshot.type);
                     if (snapshot.remark) setRemark(snapshot.remark);
                     if (snapshot.freqAmount) setFreq(prev => ({ ...prev, amount: snapshot.freqAmount }));
                     if (snapshot.freqUnit) setFreq(prev => ({ ...prev, unit: snapshot.freqUnit }));
+                    if (log) setRestoredHistoryLog(log);
                     showToast("ดึงข้อมูลย้อนหลังจากประวัติสำเร็จ");
                     setIsHistoryOpen(false);
                  }}
@@ -542,354 +589,265 @@ const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, 
                 ];
                 
                 const adYear = calYear - 543;
-                const daysInMonth = new Date(adYear, calMonth + 1, 0).getDate();
-                const standardDay = new Date(adYear, calMonth, 1).getDay(); // 0 is Sunday, 1 is Monday, etc.
-                
-                // Correct Monday-start day offset: Monday is 0, Tuesday is 1, ..., Sunday is 6
-                const firstDayIndex = standardDay === 0 ? 6 : standardDay - 1;
-                
-                const daysArray = [];
-                for (let i = 0; i < firstDayIndex; i++) {
-                  daysArray.push(null);
-                }
-                for (let d = 1; d <= daysInMonth; d++) {
-                  daysArray.push(d);
-                }
+                const firstDate = new Date(adYear, calMonth, 1);
+                const standardDay = firstDate.getDay(); 
+                const firstDayIndex = standardDay === 0 ? 6 : standardDay - 1; 
 
-                // Pad end to ensure exact multiples of 7 elements per week row
-                const remainder = daysArray.length % 7;
-                if (remainder > 0) {
-                  const pad = 7 - remainder;
-                  for (let i = 0; i < pad; i++) {
-                    daysArray.push(null);
-                  }
-                }
+                const startDate = new Date(firstDate);
+                startDate.setDate(startDate.getDate() - firstDayIndex);
 
-                // Chunk days into weeks (each week has 7 cells)
                 const calendarWeeks = [];
-                for (let i = 0; i < daysArray.length; i += 7) {
-                  calendarWeeks.push(daysArray.slice(i, i + 7));
+                for (let week = 0; week < 6; week++) {
+                  const weekRow = [];
+                  for (let day = 0; day < 7; day++) {
+                    weekRow.push(new Date(startDate));
+                    startDate.setDate(startDate.getDate() + 1);
+                  }
+                  calendarWeeks.push(weekRow);
                 }
 
-                // Parse latest contact dates to YYYY-MM-DD
                 const getFormattedDateKey = (dateStr) => {
                   const parsed = parseThaiDate(dateStr);
                   if (!parsed) return null;
                   const y = parsed.getFullYear();
                   const m = (parsed.getMonth() + 1).toString().padStart(2, '0');
                   const d = parsed.getDate().toString().padStart(2, '0');
-                  return y + "-" + m + "-" + d;
+                  return `${y}-${m}-${d}`;
                 };
 
                 const lastCallKey = getFormattedDateKey(customer.lastCallDate);
                 const lastOrderKey = getFormattedDateKey(customer.lastOrderDate);
+
+                const getDayFollowupState = (d) => {
+                  const y = d.getFullYear();
+                  const m = (d.getMonth() + 1).toString().padStart(2, '0');
+                  const dayStr = d.getDate().toString().padStart(2, '0');
+                  const kDate = `${y}-${m}-${dayStr}`;
+                  const dailyVal = gridData[`${kDate}-followup`];
+                  if (dailyVal !== undefined) return dailyVal;
+                  return lastCallKey && kDate === lastCallKey;
+                };
                 
-                const getTargetMonthAndWeek = (weekIdx) => {
-                  let firstMondayDay = 1;
-                  while (new Date(adYear, calMonth, firstMondayDay).getDay() !== 1) {
-                    firstMondayDay++;
-                  }
-                  const firstMondayRowIdx = calendarWeeks.findIndex(w => w.includes(firstMondayDay));
-                  
-                  if (weekIdx < firstMondayRowIdx) {
-                    let targetMonthIdx = calMonth - 1;
-                    let targetYear = calYear;
-                    if (targetMonthIdx < 0) {
-                      targetMonthIdx = 11;
-                      targetYear -= 1;
-                    }
-                    const targetMonthName = thaiMonths[targetMonthIdx];
-                    return {
-                      monthName: targetMonthName,
-                      weekNum: 4,
-                      isPrevMonth: true,
-                      label: targetMonthName.slice(0, 3) + " (W4)"
-                    };
-                  } else {
-                    const weekNum = Math.min(4, weekIdx - firstMondayRowIdx + 1);
-                    return {
-                      monthName: thaiMonths[calMonth],
-                      weekNum,
-                      isPrevMonth: false,
-                      label: "W" + weekNum
-                    };
-                  }
+                const getDayOrderState = (d) => {
+                  const y = d.getFullYear();
+                  const m = (d.getMonth() + 1).toString().padStart(2, '0');
+                  const dayStr = d.getDate().toString().padStart(2, '0');
+                  const kDate = `${y}-${m}-${dayStr}`;
+                  const dailyVal = gridData[`${kDate}-order`];
+                  if (dailyVal !== undefined) return dailyVal;
+                  return lastOrderKey && kDate === lastOrderKey;
                 };
 
-                const handleToggleFollowup = (day, weekIdx, isFollowed) => {
+                const getWeekNumAndMonth = (d) => {
+                  const dMonth = d.getMonth();
+                  const dDay = d.getDate();
+                  const weekNum = dDay <= 7 ? 1 : dDay <= 14 ? 2 : dDay <= 21 ? 3 : 4;
+                  return { monthName: thaiMonths[dMonth], weekNum };
+                };
+
+                const handleToggleFollowup = (d, isFollowed) => {
                   if (readonly) return;
-                  const { monthName, weekNum } = getTargetMonthAndWeek(weekIdx);
-                  const dayStr = day.toString().padStart(2, '0');
-                  const monthStr = (calMonth + 1).toString().padStart(2, '0');
-                  const fKey = adYear + "-" + monthStr + "-" + dayStr + "-followup";
-                  const fWeekKey = monthName + "-" + weekNum + "-followup";
-                  const oWeekKey = monthName + "-" + weekNum + "-order";
+                  const { monthName, weekNum } = getWeekNumAndMonth(d);
+                  const y = d.getFullYear();
+                  const m = (d.getMonth() + 1).toString().padStart(2, '0');
+                  const dayStr = d.getDate().toString().padStart(2, '0');
+                  const keyDate = `${y}-${m}-${dayStr}`;
                   
+                  const todayKey = formatDateKey(getTodayDate());
+                  if (keyDate !== todayKey) {
+                    showToast("ไม่สามารถบันทึกข้อมูลย้อนหลังหรือล่วงหน้าได้ (ต้องเป็นวันนี้เท่านั้น)", "error");
+                    return;
+                  }
+                  
+                  const fKey = `${keyDate}-followup`;
+                  const fWeekKey = `${monthName}-${weekNum}-followup`;
+                  
+                  setSelectedDateStr(keyDate);
                   const newValue = !isFollowed;
                   
                   setGridData(prev => {
                     const updated = { ...prev };
-                    if (newValue) {
-                      updated[fKey] = true;
-                      updated[fWeekKey] = true;
-                    } else {
-                      updated[fKey] = false;
-                      updated[fWeekKey] = false;
-                      const week = calendarWeeks[weekIdx];
-                      week.forEach(d => {
-                        if (d !== null) {
-                          updated[adYear + "-" + monthStr + "-" + d.toString().padStart(2, '0') + "-followup"] = false;
-                        }
-                      });
-                    }
-                    
-                    // Update frequency logic
-                    const hasOrder = updated[oWeekKey] || false;
-                    let delta = 0;
-                    if (newValue && !hasOrder) delta = 1;
-                    if (!newValue && !hasOrder) delta = -1;
-                    if (delta !== 0) {
-                      setFreq(prevFreq => {
-                        let newAmount = prevFreq.amount + delta;
-                        let newUnit = prevFreq.unit;
-                        if (delta > 0) {
-                          if (newUnit === 'สัปดาห์' && newAmount > 4) { newAmount = 1; newUnit = 'เดือน'; }
-                         } else {
-                           if (newAmount < 1) { if (newUnit === 'เดือน') { newAmount = 4; newUnit = 'สัปดาห์'; } else { newAmount = 1; } }
-                         }
-                         return { amount: newAmount, unit: newUnit };
-                       });
-                     }
-                     return updated;
-                   });
-                 };
+                    updated[fKey] = newValue;
+                    updated[fWeekKey] = newValue;
+                    return updated;
+                  });
+                };
 
-                 const handleToggleOrder = (day, weekIdx, isOrdered) => {
-                   if (readonly) return;
-                   const { monthName, weekNum } = getTargetMonthAndWeek(weekIdx);
-                   const dayStr = day.toString().padStart(2, '0');
-                   const monthStr = (calMonth + 1).toString().padStart(2, '0');
-                   const oKey = adYear + "-" + monthStr + "-" + dayStr + "-order";
-                   const fWeekKey = monthName + "-" + weekNum + "-followup";
-                   const oWeekKey = monthName + "-" + weekNum + "-order";
-                   
-                   const newValue = !isOrdered;
-                   
-                   setGridData(prev => {
-                     const updated = { ...prev };
-                     if (newValue) {
-                       updated[oKey] = true;
-                       updated[oWeekKey] = true;
-                     } else {
-                       updated[oKey] = false;
-                       updated[oWeekKey] = false;
-                       const week = calendarWeeks[weekIdx];
-                       week.forEach(d => {
-                         if (d !== null) {
-                           updated[adYear + "-" + monthStr + "-" + d.toString().padStart(2, '0') + "-order"] = false;
-                         }
-                       });
-                     }
-                     
-                     // Update frequency logic
-                     const hasFollowup = updated[fWeekKey] || false;
-                     let delta = 0;
-                     if (newValue && hasFollowup) delta = -1;
-                     if (!newValue && hasFollowup) delta = 1;
-                     if (delta !== 0) {
-                       setFreq(prevFreq => {
-                         let newAmount = prevFreq.amount + delta;
-                         let newUnit = prevFreq.unit;
-                         if (delta > 0) {
-                           if (newUnit === 'สัปดาห์' && newAmount > 4) { newAmount = 1; newUnit = 'เดือน'; }
-                         } else {
-                           if (newAmount < 1) { if (newUnit === 'เดือน') { newAmount = 4; newUnit = 'สัปดาห์'; } else { newAmount = 1; } }
-                         }
-                         return { amount: newAmount, unit: newUnit };
-                       });
-                     }
-                     return updated;
-                   });
-                 };
-                 
-                 const handlePrevMonth = () => {
-                   if (calMonth === 0) {
-                     setCalMonth(11);
-                     setCalYear(prev => prev - 1);
-                   } else {
-                     setCalMonth(prev => prev - 1);
-                   }
-                 };
-                 
-                 const handleNextMonth = () => {
-                   if (calMonth === 11) {
-                     setCalMonth(0);
-                     setCalYear(prev => prev + 1);
-                   } else {
-                     setCalMonth(prev => prev + 1);
-                   }
-                 };
+                const handleToggleOrder = (d, isOrdered) => {
+                  if (readonly) return;
+                  const { monthName, weekNum } = getWeekNumAndMonth(d);
+                  const y = d.getFullYear();
+                  const m = (d.getMonth() + 1).toString().padStart(2, '0');
+                  const dayStr = d.getDate().toString().padStart(2, '0');
+                  const keyDate = `${y}-${m}-${dayStr}`;
+                  
+                  const todayKey = formatDateKey(getTodayDate());
+                  if (keyDate !== todayKey) {
+                    showToast("ไม่สามารถบันทึกข้อมูลย้อนหลังหรือล่วงหน้าได้ (ต้องเป็นวันนี้เท่านั้น)", "error");
+                    return;
+                  }
+                  
+                  const oKey = `${keyDate}-order`;
+                  const oWeekKey = `${monthName}-${weekNum}-order`;
+                  
+                  setSelectedDateStr(keyDate);
+                  const newValue = !isOrdered;
+                  
+                  setGridData(prev => {
+                    const updated = { ...prev };
+                    updated[oKey] = newValue;
+                    updated[oWeekKey] = newValue;
+                    return updated;
+                  });
+                };
+                
+                const handlePrevMonth = () => {
+                  if (calMonth === 0) {
+                    setCalMonth(11);
+                    setCalYear(prev => prev - 1);
+                  } else {
+                    setCalMonth(prev => prev - 1);
+                  }
+                };
+                
+                const handleNextMonth = () => {
+                  if (calMonth === 11) {
+                    setCalMonth(0);
+                    setCalYear(prev => prev + 1);
+                  } else {
+                    setCalMonth(prev => prev + 1);
+                  }
+                };
 
-                 const today = new Date();
-                 const isCurrentMonthYear = today.getFullYear() === adYear && today.getMonth() === calMonth;
-                 const todayDate = today.getDate();
+                const today = new Date();
+                const todayDateObj = new Date();
+                const isCurrentMonthYear = today.getFullYear() === adYear && today.getMonth() === calMonth;
+                const todayDate = today.getDate();
 
-                 return (
-                   <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm space-y-4 animate-in fade-in duration-300 font-sans text-left">
-                     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
-                       <div className="flex items-center gap-2">
-                         <Calendar size={15} className="text-primary animate-pulse" />
-                         <span className="text-xs font-black text-slate-800 uppercase tracking-wider">ไอเดียที่ 2: ปฏิทินบันทึกรายวัน (Calendar Tracker)</span>
-                       </div>
-                       
-                       <div className="flex items-center gap-2.5">
-                         <div className="flex items-center bg-slate-50 border border-slate-100 rounded-xl overflow-hidden shadow-inner">
-                           <button
-                             type="button"
-                             onClick={handlePrevMonth}
-                             className="px-2.5 py-1.5 hover:bg-slate-100 text-slate-600 transition-colors border-none cursor-pointer"
-                           >
-                             <ChevronLeft size={14} />
-                           </button>
-                           <div className="px-3 text-[11px] font-black text-slate-800 min-w-[110px] text-center italic">
-                             {thaiMonths[calMonth]} {calYear}
-                           </div>
-                           <button
-                             type="button"
-                             onClick={handleNextMonth}
-                             className="px-2.5 py-1.5 hover:bg-slate-100 text-slate-600 transition-colors border-none cursor-pointer"
-                           >
-                             <ChevronLeft size={14} style={{ transform: 'rotate(180deg)' }} />
-                           </button>
-                         </div>
+                return (
+                  <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm space-y-4 animate-in fade-in duration-300 font-sans text-left">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                      <div className="flex items-center gap-2">
+                        <Calendar size={15} className="text-primary animate-pulse" />
+                        <span className="text-xs font-black text-slate-800 uppercase tracking-wider">ไอเดียที่ 2: ปฏิทินบันทึกรายวัน (Calendar Tracker)</span>
+                      </div>
+                      
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex items-center bg-slate-50 border border-slate-100 rounded-xl overflow-hidden shadow-inner">
+                          <button
+                            type="button"
+                            onClick={handlePrevMonth}
+                            className="px-2.5 py-1.5 hover:bg-slate-100 text-slate-600 transition-colors border-none cursor-pointer"
+                          >
+                            <ChevronLeft size={14} />
+                          </button>
+                          <div className="px-3 text-[11px] font-black text-slate-800 min-w-[110px] text-center italic">
+                            {thaiMonths[calMonth]} {calYear}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleNextMonth}
+                            className="px-2.5 py-1.5 hover:bg-slate-100 text-slate-600 transition-colors border-none cursor-pointer"
+                          >
+                            <ChevronLeft size={14} style={{ transform: 'rotate(180deg)' }} />
+                          </button>
+                        </div>
 
-                         <div className="flex items-center gap-1.5">
-                           <CustomSelect
-                             value={calMonth}
-                             onChange={(e) => setCalMonth(parseInt(e.target.value))}
-                             className="py-1 px-2 text-[10px] bg-white border border-slate-100 rounded-lg min-w-[90px]"
-                             options={thaiMonths.map((m, idx) => ({ value: idx, label: m }))}
-                           />
-                           <CustomSelect
-                             value={calYear}
-                             onChange={(e) => setCalYear(parseInt(e.target.value))}
-                             containerClassName="min-w-[130px] w-[130px]"
-                             className="py-1 px-2 text-[10px] bg-white border border-slate-100 rounded-lg"
-                             options={getYearOptions()}
-                           />
-                         </div>
-                       </div>
-                     </div>
+                        <div className="flex items-center gap-1.5">
+                          <CustomSelect
+                            value={calMonth}
+                            onChange={(e) => setCalMonth(parseInt(e.target.value))}
+                            className="py-1 px-2 text-[10px] bg-white border border-slate-100 rounded-lg min-w-[90px]"
+                            options={thaiMonths.map((m, idx) => ({ value: idx, label: m }))}
+                          />
+                          <CustomSelect
+                            value={calYear}
+                            onChange={(e) => setCalYear(parseInt(e.target.value))}
+                            containerClassName="min-w-[130px] w-[130px]"
+                            className="py-1 px-2 text-[10px] bg-white border border-slate-100 rounded-lg"
+                            options={getYearOptions()}
+                          />
+                        </div>
+                      </div>
+                    </div>
 
-                     <div className="grid grid-cols-8 gap-1.5 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 py-1.5 rounded-xl border border-slate-100">
-                       <div className="text-slate-500 border-r border-slate-200">สัปดาห์</div>
-                       <div>จ.</div>
-                       <div>อ.</div>
-                       <div>พ.</div>
-                       <div>พฤ.</div>
-                       <div>ศ.</div>
-                       <div className="text-rose-500">ส.</div>
-                       <div className="text-rose-500">อา.</div>
-                     </div>
+                    <div className="grid grid-cols-8 gap-1.5 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 py-1.5 rounded-xl border border-slate-100">
+                      <div className="text-slate-500 border-r border-slate-200">สัปดาห์</div>
+                      <div>จ.</div>
+                      <div>อ.</div>
+                      <div>พ.</div>
+                      <div>พฤ.</div>
+                      <div>ศ.</div>
+                      <div className="text-rose-500">ส.</div>
+                      <div className="text-rose-500">อา.</div>
+                    </div>
 
-                     <div className="grid grid-cols-8 gap-1.5">
-                       {calendarWeeks.map((week, weekIdx) => {
-                         const target = getTargetMonthAndWeek(weekIdx);
-                         return (
-                           <React.Fragment key={weekIdx}>
-                             {/* Week Row Indicator Label */}
-                             <div className="flex flex-col items-center justify-center bg-slate-50/50 border border-slate-100 rounded-xl font-black text-[9px] text-slate-500 py-2 shadow-inner min-h-[80px]">
-                               <span className="opacity-65 text-[7px] uppercase tracking-wider leading-none">WEEK</span>
-                               <span className="text-slate-800 text-[12px] font-black italic mt-0.5">{target.label}</span>
-                             </div>
+                    <div className="grid grid-cols-8 gap-1.5">
+                      {calendarWeeks.map((week, weekIdx) => {
+                        const startW = week[0];
+                        const endW = week[6];
+                        const wLabel = `${startW.getDate()}-${endW.getDate()}`;
+                        return (
+                          <React.Fragment key={weekIdx}>
+                            {/* Week Row Indicator Label */}
+                            <div className="flex flex-col items-center justify-center bg-slate-50/50 border border-slate-100 rounded-xl font-black text-[9px] text-slate-500 py-2 shadow-inner min-h-[80px]">
+                              <span className="opacity-80 text-[10px] uppercase tracking-wider leading-none">สัปดาห์</span>
+                              <span className="text-slate-800 text-[16px] font-black mt-1">{weekIdx + 1}</span>
+                            </div>
 
-                             {/* 7 Days of this week */}
-                             {week.map((day, idx) => {
-                               if (day === null) {
-                                 return <div key={"empty-" + weekIdx + "-" + idx} className="rounded-xl border border-transparent bg-slate-50/20 min-h-[80px]" />;
-                               }
+                            {/* 7 Days of this week */}
+                            {week.map((dObj, idx) => {
+                              const y = dObj.getFullYear();
+                              const m = (dObj.getMonth() + 1).toString().padStart(2, '0');
+                              const d = dObj.getDate().toString().padStart(2, '0');
+                              const keyDate = `${y}-${m}-${d}`;
+                              
+                              const isFollowed = getDayFollowupState(dObj);
+                              const isOrdered = getDayOrderState(dObj);
+                              const isToday = dObj.getFullYear() === todayDateObj.getFullYear() && dObj.getMonth() === todayDateObj.getMonth() && dObj.getDate() === todayDateObj.getDate();
+                              const isOtherMonth = dObj.getMonth() !== calMonth;
 
-                               const dayStr = day.toString().padStart(2, '0');
-                               const monthStr = (calMonth + 1).toString().padStart(2, '0');
-                               const keyDate = adYear + "-" + monthStr + "-" + dayStr;
-                               
-                               const fKey = keyDate + "-followup";
-                               const oKey = keyDate + "-order";
-                               
-                               const fWeekKey = target.monthName + "-" + target.weekNum + "-followup";
-                               const oWeekKey = target.monthName + "-" + target.weekNum + "-order";
-                               
-                               const getDayFollowupState = (d) => {
-                                 if (d === null) return false;
-                                 const dStr = d.toString().padStart(2, '0');
-                                 const kDate = adYear + "-" + monthStr + "-" + dStr;
-                                 const dailyVal = gridData[kDate + "-followup"];
-                                 if (dailyVal !== undefined) return dailyVal;
-                                 return lastCallKey && kDate === lastCallKey;
-                               };
-                               
-                               const getDayOrderState = (d) => {
-                                 if (d === null) return false;
-                                 const dStr = d.toString().padStart(2, '0');
-                                 const kDate = adYear + "-" + monthStr + "-" + dStr;
-                                 const dailyVal = gridData[kDate + "-order"];
-                                 if (dailyVal !== undefined) return dailyVal;
-                                 return lastOrderKey && kDate === lastOrderKey;
-                               };
-                               
-                               const hasDailyFollowup = getDayFollowupState(day);
-                               const weekFollowupVal = gridData[fWeekKey] || false;
-                               const hasDailyFollowupInWeek = week.some(d => getDayFollowupState(d));
-                               const firstNonNullDay = week.find(d => d !== null);
-                               const isFollowed = hasDailyFollowup || (!hasDailyFollowupInWeek && weekFollowupVal && day === firstNonNullDay);
-                               
-                               const hasDailyOrder = getDayOrderState(day);
-                               const weekOrderVal = gridData[oWeekKey] || false;
-                               const hasDailyOrderInWeek = week.some(d => getDayOrderState(d));
-                               const isOrdered = hasDailyOrder || (!hasDailyOrderInWeek && weekOrderVal && day === firstNonNullDay);
-                               
-                               const isToday = isCurrentMonthYear && day === todayDate;
+                              return (
+                                <div 
+                                  key={"day-" + keyDate}
+                                  className={"rounded-xl border p-2 flex flex-col justify-between transition-all duration-300 relative group min-h-[80px] " + (isToday ? 'bg-amber-50/60 border-amber-300 shadow-sm ring-2 ring-amber-200' : (isOtherMonth ? 'bg-slate-50/50 border-transparent opacity-60' : 'bg-white border-slate-100 hover:border-slate-300'))}
+                                >
+                                  <div className="flex justify-between items-center">
+                                    <span className={"text-[13px] font-black leading-none pl-0.5 " + (isToday ? 'text-amber-800' : 'text-slate-800')}
+                                    >
+                                      {dObj.getDate()}
+                                      {isOtherMonth && <span className="text-[8px] text-slate-400 ml-1">({thaiMonths[dObj.getMonth()].slice(0,3)})</span>}
+                                    </span>
+                                    {isToday && (
+                                      <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-ping absolute top-1 right-1" />
+                                    )}
+                                  </div>
 
-                               return (
-                                 <div 
-                                   key={"day-" + day}
-                                   className={"rounded-xl border p-2 flex flex-col justify-between transition-all duration-300 relative group min-h-[80px] " + (isToday ? 'bg-amber-50/60 border-amber-300 shadow-sm ring-2 ring-amber-200' : 'bg-white border-slate-100 hover:border-slate-300')}
-                                 >
-                                   <div className="flex justify-between items-center">
-                                     <span className={"text-[13px] font-black leading-none pl-0.5 " + (isToday ? 'text-amber-800' : 'text-slate-800')}
-                                     >
-                                       {day}
-                                     </span>
-                                     {isToday && (
-                                       <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-ping absolute top-1 right-1" />
-                                     )}
-                                   </div>
-
-                                   <div className="flex gap-1.5 justify-center mt-2">
-                                     <button
-                                       type="button"
-                                       onClick={() => handleToggleFollowup(day, weekIdx, isFollowed)}
-                                       className={"w-8 h-8 rounded-lg flex items-center justify-center transition-all border border-solid cursor-pointer active:scale-90 " + (isFollowed ? 'bg-primary border-primary text-white shadow-md shadow-primary/20' : 'bg-slate-50 border-slate-100 text-slate-300 hover:bg-slate-100 hover:text-slate-500')}
-                                       title="📞 โทรติดตามวันนี้"
-                                     >
-                                       <Check size={14} strokeWidth={3} />
-                                     </button>
-                                     <button
-                                       type="button"
-                                       onClick={() => handleToggleOrder(day, weekIdx, isOrdered)}
-                                       className={"w-8 h-8 rounded-lg flex items-center justify-center transition-all border border-solid cursor-pointer active:scale-90 " + (isOrdered ? 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-500/20' : 'bg-slate-50 border-slate-100 text-slate-300 hover:bg-slate-100 hover:text-slate-500')}
-                                       title="🛍️ ลูกค้าสั่งซื้อซ้ำวันนี้"
-                                     >
-                                       <ShoppingBag size={12} strokeWidth={2.5} />
-                                     </button>
-                                   </div>
-                                 </div>
-                               );
-                             })}
-                           </React.Fragment>
-                         );
-                       })}
-                     </div>
+                                  <div className="flex gap-1.5 justify-center mt-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleFollowup(dObj, isFollowed)}
+                                      className={"w-8 h-8 rounded-lg flex items-center justify-center transition-all border border-solid cursor-pointer active:scale-90 " + (isFollowed ? 'bg-primary border-primary text-white shadow-md shadow-primary/20' : 'bg-slate-50 border-slate-100 text-slate-300 hover:bg-slate-100 hover:text-slate-500')}
+                                      title="📞 โทรติดตามวันนี้"
+                                    >
+                                      <Check size={14} strokeWidth={3} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleOrder(dObj, isOrdered)}
+                                      className={"w-8 h-8 rounded-lg flex items-center justify-center transition-all border border-solid cursor-pointer active:scale-90 " + (isOrdered ? 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-500/20' : 'bg-slate-50 border-slate-100 text-slate-300 hover:bg-slate-100 hover:text-slate-500')}
+                                      title="🛍️ ลูกค้าสั่งซื้อซ้ำวันนี้"
+                                    >
+                                      <ShoppingBag size={12} strokeWidth={2.5} />
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
 
                     <div className="flex items-center gap-2 bg-slate-50 p-2.5 rounded-2xl border border-slate-100 text-[10px] font-black text-slate-500">
                       <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
@@ -898,13 +856,37 @@ const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, 
                   </div>
                 );
              })()}
+
           </div>
 <div className="lg:col-span-4 space-y-4">
-           <div className="bg-white rounded-3xl shadow-sm p-4 border-t-[6px] border-primary space-y-4">
-             <div className="flex items-center gap-2 border-b border-slate-50 pb-2">
-                <HistoryIcon size={14} className="text-primary" />
-                <div className="text-[10px] font-black text-slate-900 uppercase tracking-widest italic">Tracking History</div>
+           {restoredHistoryLog && (
+             <div className="bg-sky-50 border border-sky-300 p-3 rounded-xl shadow-sm flex items-start gap-3">
+               <HistoryIcon className="text-sky-500 mt-0.5 shrink-0" size={16} />
+               <div>
+                 <div className="text-[10px] font-black text-sky-800 uppercase tracking-widest italic mb-1">กำลังดูประวัติย้อนหลัง</div>
+                 <div className="text-xs font-bold text-sky-700 leading-snug">
+                   {(() => {
+                     const ts = restoredHistoryLog.timestamp;
+                     if (!ts) return 'ไม่ทราบวันที่';
+                     const d = typeof ts.toDate === 'function' ? ts.toDate() : (ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts));
+                     return `บันทึกเมื่อ: ${d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })} เวลา ${d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.`;
+                   })()}
+                 </div>
+               </div>
              </div>
+           )}
+           <div className="bg-white rounded-3xl shadow-sm p-4 border-t-[6px] border-primary space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-50 pb-2">
+                 <div className="flex items-center gap-2">
+                    <HistoryIcon size={14} className="text-primary" />
+                    <div className="text-[10px] font-black text-slate-900 uppercase tracking-widest italic">Tracking History</div>
+                 </div>
+                 {selectedDateStr && (
+                   <div className="px-2 py-0.5 bg-sky-100 border border-sky-200 text-sky-700 rounded-lg text-[9px] font-black uppercase tracking-wider animate-pulse">
+                     วันที่: {formatThaiDate(selectedDateStr)}
+                   </div>
+                 )}
+              </div>
 
              <div className="grid grid-cols-1 gap-2">
                 <div>
@@ -940,13 +922,13 @@ const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, 
 
              
              {(() => {
-                const orderCount = Object.keys(gridData || {}).filter(k => k.endsWith('-order') && gridData[k] === true).length;
-                let isFreqLocked = orderCount < 2;
+                let isFreqLocked = false;
                 let unlockDateStr = '';
+                let orderCount = Object.keys(gridData || {}).filter(k => k.endsWith('-order') && gridData[k] === true).length;
                 
-                if (orderCount >= 2 && customer.freqCalculatedAt) {
-                  const calculatedDate = customer.freqCalculatedAt.toDate ? customer.freqCalculatedAt.toDate() : new Date(customer.freqCalculatedAt);
-                  const threeMonthsLater = new Date(calculatedDate);
+                if (customer.customerSince) {
+                  const customerSinceDate = new Date(customer.customerSince);
+                  const threeMonthsLater = new Date(customerSinceDate);
                   threeMonthsLater.setMonth(threeMonthsLater.getMonth() + 3);
                   if (getTodayDate() < threeMonthsLater) {
                     isFreqLocked = true;
@@ -981,11 +963,11 @@ const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, 
                     <div className="text-[9px] font-bold mt-1 pl-1 text-left">
                       {isFreqLocked ? (
                         <span className="text-amber-500 flex items-center gap-1">
-                          🔒 {orderCount < 2 ? `สั่งซื้อสะสม: ${orderCount}/2 ครั้ง (ต้องสั่งซื้อ 2 ครั้งเพื่อแก้ไขรอบการติดตาม)` : `ล็อคความถี่ 3 เดือน (ปลดล็อควันที่ ${unlockDateStr})`}
+                          🔒 ล็อคความถี่ 3 เดือน (ปลดล็อควันที่ {unlockDateStr})
                         </span>
                       ) : (
                         <span className="text-emerald-600 flex items-center gap-1 font-extrabold">
-                          🔓 ปลดล็อกการตั้งรอบการติดตามแล้ว (สั่งซื้อสะสม: {orderCount} ครั้ง)
+                          🔓 ปลดล็อกการตั้งรอบการติดตามแล้ว
                         </span>
                       )}
                     </div>
@@ -995,7 +977,22 @@ const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, 
 
 
              <div className="space-y-1.5">
-               <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest italic pl-1">Latest Remark</label>
+               <div className="flex items-center justify-between pl-1 pr-1">
+                 <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest italic">
+                   {selectedDateStr === formatDateKey(getTodayDate()) 
+                     ? "บันทึกรายละเอียด (วันนี้)" 
+                     : `บันทึกรายละเอียดวันที่ ${formatThaiDate(selectedDateStr)}`}
+                 </label>
+                 <select 
+                   value={channel} 
+                   onChange={(e) => setChannel(e.target.value)} 
+                   className="text-[10px] bg-sky-50 border border-sky-100 text-sky-700 font-bold px-2 py-0.5 rounded-lg outline-none"
+                 >
+                   <option value="Call">📞 โทรศัพท์</option>
+                   <option value="LINE">💬 LINE</option>
+                   <option value="Facebook">📘 Facebook</option>
+                 </select>
+               </div>
                <textarea 
                  placeholder="..." 
                  value={remark}
@@ -1014,6 +1011,7 @@ const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, 
                      setType(customer.type || 'ยังไม่เคยเปิดบิล');
                      setRemark(customer.remark || '');
                      setFreq({ amount: customer.freqAmount || 1, unit: customer.freqUnit || 'สัปดาห์' });
+                     setSelectedDateStr(formatDateKey(getTodayDate()));
                      showToast("ล้างข้อมูลฟอร์มเรียบร้อย");
                    }}
                    className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-black text-[12px] shadow-sm transition-all active:scale-95 uppercase flex items-center justify-center gap-2 cursor-pointer border-none"
@@ -1047,3 +1045,4 @@ const RetentionTrackingForm = ({ customer, onBack, showToast, readonly = false, 
 };
 
 export default RetentionTrackingForm;
+

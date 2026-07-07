@@ -172,15 +172,15 @@ const ManagerDashboardView = () => {
       // Fetch stats for each period
       let historyResults = [];
       if (currentMode === 'week') {
-        const snapshots = await leadService.getHistoricalDashboardStats(refDate, numPeriods);
-        if (snapshots && snapshots.length === numPeriods) {
-          historyResults = snapshots;
-        } else {
+        // const snapshots = await leadService.getHistoricalDashboardStats(refDate, numPeriods);
+        // if (snapshots && snapshots.length === numPeriods) {
+        //   historyResults = snapshots;
+        // } else {
           // Fallback to dynamic generation if snapshots are missing/incomplete
           historyResults = await Promise.all(
             periodStarts.map(start => leadService.getStats(start, currentMode))
           );
-        }
+        // }
       } else {
         historyResults = await Promise.all(
           periodStarts.map(start => leadService.getStats(start, currentMode))
@@ -195,12 +195,12 @@ const ManagerDashboardView = () => {
       const adminList = allUsers.filter(u => u.role === 'admin');
       adminList.forEach(a => { ratesMap[a.id] = Array(numPeriods).fill('-'); });
 
-      // Fill rates from leaderboard data
+      // Fill rates from adminDetails data
       historyResults.forEach((periodData, periodIdx) => {
-        const leaderboard = periodData.weeklyStats?.leaderboard || [];
-        leaderboard.forEach(entry => {
-          if (ratesMap[entry.id]) {
-            ratesMap[entry.id][periodIdx] = entry.rate || '0%';
+        const adminDetails = periodData.weeklyStats?.adminDetails || {};
+        Object.entries(adminDetails).forEach(([adminId, entry]) => {
+          if (ratesMap[adminId]) {
+            ratesMap[adminId][periodIdx] = entry.rate || '0%';
           }
         });
       });
@@ -616,7 +616,7 @@ const ManagerDashboardView = () => {
   }
 
   return (
-    <div className={`space-y-6 animate-in fade-in duration-700 max-w-[1600px] mx-auto pb-8 relative ${refreshing ? 'opacity-50 pointer-events-none' : ''}`}>
+    <div className={`space-y-4 animate-in fade-in duration-700 max-w-[1600px] mx-auto pb-6 relative ${refreshing ? 'opacity-50 pointer-events-none' : ''}`}>
       
       {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-4 border-b border-slate-100 font-sans">
@@ -681,131 +681,50 @@ const ManagerDashboardView = () => {
       </div>
 
       {/* Hero Stats Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {topStats.map((s, i) => (
-          <div key={i} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 group hover:shadow-xl hover:-translate-y-1 transition-all duration-500 relative overflow-hidden">
+          <div key={i} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 group hover:shadow-md transition-all duration-300 relative overflow-hidden flex items-center gap-3">
             {refreshing && <div className="absolute inset-0 bg-white/40 backdrop-blur-[1px] flex items-center justify-center z-10 animate-pulse" />}
-            <div className="flex items-start justify-between mb-4">
-              <div className={`p-3.5 rounded-2xl ${s.bg} shadow-inner`}><s.Icon size={24} className={s.color} /></div>
-              {s.trend !== null && (
-                <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black shadow-sm ${parseFloat(s.trend) >= 0 ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-rose-50 text-rose-600 border border-rose-100'}`}>
-                  {parseFloat(s.trend) >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />} {s.trend}%
-                </div>
-              )}
+            <div className={`p-2.5 rounded-xl ${s.bg} shrink-0`}><s.Icon size={18} className={s.color} /></div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider truncate">{s.label}</div>
+              <div className="text-xl font-black text-slate-900 tracking-tighter leading-none mb-0.5">{s.value}</div>
+              <div className="text-[10px] font-bold text-slate-400 italic truncate">{s.sub}</div>
             </div>
-            <div className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">{s.label}</div>
-            <div className="text-3xl font-black text-slate-900 tracking-tighter mb-2">{s.value}</div>
-            <div className="flex items-center gap-2 text-xs font-bold italic"><span className={`${s.color} opacity-80 uppercase tracking-widest`}>{s.sub}</span></div>
+            {s.trend !== null && (
+              <span className={`px-1.5 py-0.5 rounded text-[8px] font-black shrink-0 ${parseFloat(s.trend) >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>{s.trend}%</span>
+            )}
           </div>
         ))}
       </div>
 
-      {/* Bot Weekly Funnel Flow */}
-      <div className="bg-gradient-to-br from-slate-900 to-indigo-950 rounded-[2.5rem] p-7 shadow-2xl shadow-indigo-900/30 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/10 rounded-bl-full -mr-20 -mt-20 blur-3xl pointer-events-none" />
-        <div className="relative z-10">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <div className="text-base font-black text-white uppercase tracking-tight flex items-center gap-2 italic">
-                <Flame className="text-amber-400" size={18} /> สรุปความเคลื่อนไหวของดีล ประจำสัปดาห์นี้
-              </div>
-              <p className="text-[10px] font-black text-white/40 uppercase tracking-widest mt-1">
-                Bot Processed → ลูกค้าสนใจจริง → รอตัดสินใจ → ลูกค้าประจำ
-              </p>
+
+      {/* Bot Funnel Flow (Compact) */}
+      <div className="bg-gradient-to-br from-slate-900 to-indigo-950 rounded-2xl p-4 shadow-md text-white relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-500/10 rounded-bl-full -mr-12 -mt-12 blur-2xl pointer-events-none" />
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div>
+            <div className="text-xs font-black uppercase tracking-tight flex items-center gap-1.5 italic text-amber-400">
+              <Flame size={14} /> ความเคลื่อนไหวของดีล
             </div>
-            <span className="text-[10px] font-black text-indigo-300 bg-indigo-500/20 px-3 py-1.5 rounded-full border border-indigo-500/30">
-              สัปดาห์นี้
-            </span>
+            <p className="text-[9px] font-black text-white/40 uppercase tracking-widest mt-0.5">Bot → สนใจจริง → รอตัดสินใจ → ลูกค้าประจำ</p>
           </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {/* Bot Processed */}
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-5 hover:bg-white/10 transition-all group/fc">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 rounded-xl bg-slate-500/30 flex items-center justify-center">
-                  <Database size={16} className="text-slate-300" />
-                </div>
-                <span className="text-[9px] font-black text-white/40 uppercase tracking-widest">บอทช่วยสกรีน</span>
+          <div className="grid grid-cols-4 gap-2 flex-1 max-w-2xl w-full">
+            {[
+              { label: 'บอทคัดกรอง', val: stats.weeklyFunnelFlow?.botProcessed ?? 0 },
+              { label: 'สนใจจริง', val: stats.weeklyFunnelFlow?.toQualified ?? 0 },
+              { label: 'รอตัดสินใจ', val: stats.weeklyFunnelFlow?.toDecision ?? 0 },
+              { label: 'ลูกค้าประจำ', val: stats.weeklyFunnelFlow?.toCustomer ?? 0 },
+            ].map((item, idx) => (
+              <div key={idx} className="bg-white/5 border border-white/10 rounded-xl p-2 text-center">
+                <div className="text-[8px] font-black text-white/50 uppercase tracking-wide">{item.label}</div>
+                <div className="text-lg font-black text-white">{item.val}</div>
               </div>
-              <div className="text-3xl font-black text-white tracking-tighter">
-                {stats.weeklyFunnelFlow?.botProcessed ?? stats.pool ?? 0}
-              </div>
-              <div className="text-[10px] font-black text-slate-400 mt-1">นำเข้าจากคลังคัดกรอง</div>
-            </div>
-
-            {/* Arrow connector */}
-            <div className="hidden md:flex items-center justify-start -ml-2 mt-6 pointer-events-none absolute" style={{display:'none'}} />
-
-            {/* To Qualified -> ลูกค้าสนใจจริง */}
-            <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-2xl p-5 hover:bg-indigo-500/20 transition-all group/fc">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 rounded-xl bg-indigo-500/30 flex items-center justify-center">
-                  <Users size={16} className="text-indigo-300" />
-                </div>
-                <span className="text-[9px] font-black text-indigo-300/70 uppercase tracking-widest">ลูกค้าสนใจจริง</span>
-              </div>
-              <div className="text-3xl font-black text-indigo-300 tracking-tighter">
-                {stats.weeklyFunnelFlow?.toQualified ?? 0}
-              </div>
-              <div className="text-[10px] font-black text-indigo-400/60 mt-1">pool → รับเรื่อง/ติดต่อกลับ</div>
-              {(stats.weeklyFunnelFlow?.botProcessed || stats.pool) > 0 && (
-                <div className="text-[9px] font-black text-indigo-300 mt-2 bg-indigo-500/20 px-2 py-0.5 rounded-full inline-block">
-                  {Math.round(((stats.weeklyFunnelFlow?.toQualified ?? 0) / Math.max(stats.weeklyFunnelFlow?.botProcessed || stats.pool || 1, 1)) * 100)}% of pool
-                </div>
-              )}
-            </div>
-
-            {/* To Decision -> รอตัดสินใจ */}
-            <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-5 hover:bg-amber-500/20 transition-all group/fc">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 rounded-xl bg-amber-500/30 flex items-center justify-center">
-                  <Timer size={16} className="text-amber-300" />
-                </div>
-                <span className="text-[9px] font-black text-amber-300/70 uppercase tracking-widest">รอตัดสินใจ</span>
-              </div>
-              <div className="text-3xl font-black text-amber-300 tracking-tighter">
-                {stats.weeklyFunnelFlow?.toDecision ?? 0}
-              </div>
-              <div className="text-[10px] font-black text-amber-400/60 mt-1">อยู่ระหว่างยื่นข้อเสนอสัปดาห์นี้</div>
-              {(stats.weeklyFunnelFlow?.toQualified ?? 0) > 0 && (
-                <div className="text-[9px] font-black text-amber-300 mt-2 bg-amber-500/20 px-2 py-0.5 rounded-full inline-block">
-                  {Math.round(((stats.weeklyFunnelFlow?.toDecision ?? 0) / Math.max(stats.weeklyFunnelFlow?.toQualified ?? 1, 1)) * 100)}% of new
-                </div>
-              )}
-            </div>
-
-            {/* To Customer -> ลูกค้าประจำ */}
-            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-5 hover:bg-emerald-500/20 transition-all group/fc">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/30 flex items-center justify-center">
-                  <CheckCircle2 size={16} className="text-emerald-300" />
-                </div>
-                <span className="text-[9px] font-black text-emerald-300/70 uppercase tracking-widest">ลูกค้าประจำ</span>
-              </div>
-              <div className="text-3xl font-black text-emerald-300 tracking-tighter">
-                {stats.weeklyFunnelFlow?.toCustomer ?? 0}
-              </div>
-              <div className="text-[10px] font-black text-emerald-400/60 mt-1">ปิดยอดได้ในสัปดาห์นี้</div>
-              {(stats.weeklyFunnelFlow?.toDecision ?? 0) > 0 && (
-                <div className="text-[9px] font-black text-emerald-300 mt-2 bg-emerald-500/20 px-2 py-0.5 rounded-full inline-block">
-                  {Math.round(((stats.weeklyFunnelFlow?.toCustomer ?? 0) / Math.max(stats.weeklyFunnelFlow?.toDecision ?? 1, 1)) * 100)}% closing rate
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Flow arrows visual (desktop only) */}
-          <div className="hidden md:flex items-center justify-center gap-2 mt-4 text-white/20">
-            <span className="text-[10px] font-black uppercase tracking-widest">คลังคัดกรอง</span>
-            <ChevronRight size={14} />
-            <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400/60">ลูกค้าสนใจจริง</span>
-            <ChevronRight size={14} />
-            <span className="text-[10px] font-black uppercase tracking-widest text-amber-400/60">รอตัดสินใจ</span>
-            <ChevronRight size={14} />
-            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400/60">ลูกค้าประจำ</span>
+            ))}
           </div>
         </div>
       </div>
+
       {/* ─── NEW CHARTS SECTION (STAGE BREAKDOWN & GROWTH) ─── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Category Stage Status Breakdown (lg:col-span-7) */}
