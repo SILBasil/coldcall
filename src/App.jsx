@@ -56,9 +56,9 @@ const ADMIN_MENU = [
 
 const MANAGER_MENU = [
   { key: 'dashboard', label: 'แดชบอร์ดภาพรวม', icon: LayoutDashboard },
-  { key: 'dashboard2', label: 'แดชบอร์ด 2 (Compact)', icon: BarChart3 },
-  { key: 'dashboard3', label: 'เซนตอร์ CMD (V3)', icon: Activity },
-  { key: 'dashboard4', label: 'แดชบอร์ด V4 (งานลูกค้าประจำ)', icon: PieChart },
+  // { key: 'dashboard2', label: 'แดชบอร์ด 2 (Compact)', icon: BarChart3 },
+  // { key: 'dashboard3', label: 'เซนตอร์ CMD (V3)', icon: Activity },
+  // { key: 'dashboard4', label: 'แดชบอร์ด V4 (งานลูกค้าประจำ)', icon: PieChart },
   { key: 'master-pool', label: 'คลังเบอร์โทร', icon: Database },
   { key: 'new-leads', label: 'รายชื่อเบอร์ใหม่', icon: PhoneCall },
   { key: 'follow-up', label: 'ลูกค้ารอตัดสินใจ', icon: UserPlus },
