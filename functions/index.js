@@ -10,7 +10,7 @@ const db = admin.firestore();
  * Helper: ดึงข้อมูลจาก Google Sheets (คืนค่าเป็นข้อมูลดิบ)
  */
 async function fetchTabData(sheets, { tab, phoneIdx, nameIdx }) {
-  const SPREADSHEET_ID = '1Z_sE-mO8IbtA29H8I7Kx77G-pXlYqL_N_G2f4NqH_I8';
+  const SPREADSHEET_ID = '1_DgA1c9C1Ll9Y-fZQBjJi1juGIDpeuG7YN1iXdn-xGs';
   
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
@@ -45,7 +45,7 @@ exports.fetchGoogleSheetData = functions.region('us-central1').runWith({ timeout
       const phases = [
         { tab: '1.ข้อมูลVlookup', stage: 'pool', phoneIdx: 2, nameIdx: 1 },
         { tab: '2.ลูกค้าใหม่ที่ยังไม่เคยเปิด', stage: 'qualified', phoneIdx: 2, nameIdx: 1 },
-        { tab: '3.ติดตามลูกค้าที่เคยสั่งซื้อแล้ว', stage: 'customer', phoneIdx: 1, nameIdx: 0 }
+        { tab: '3.ติดตามลูกค้าที่เคยสั่งซื้อแล้ว', stage: 'customer', phoneIdx: 2, nameIdx: 1 }
       ];
 
       const results = {};

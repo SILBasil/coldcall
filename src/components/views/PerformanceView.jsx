@@ -5,16 +5,7 @@ import { leadService } from '../../services/leadService';
 const PerformanceView = () => {
   const [admins, setAdmins] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
   const [stats, setStats] = useState(null);
-
-  useEffect(() => {
-    fetchData();
-  }, []);
 
   const fetchData = async () => {
     try {
@@ -30,6 +21,10 @@ const PerformanceView = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   return (
     <div className="space-y-4 animate-in zoom-in-95 duration-500">

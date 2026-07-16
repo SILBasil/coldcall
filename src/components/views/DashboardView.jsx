@@ -7,10 +7,6 @@ import { leadService } from '../../services/leadService';
 const DashboardView = () => {
   const [admins, setAdmins] = useState([]);
   
-  useEffect(() => {
-    fetchAdmins();
-  }, []);
-
   const fetchAdmins = async () => {
     try {
       const all = await leadService.getUsers();
@@ -19,6 +15,10 @@ const DashboardView = () => {
       console.error(err);
     }
   };
+
+  useEffect(() => {
+    fetchAdmins();
+  }, []);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">

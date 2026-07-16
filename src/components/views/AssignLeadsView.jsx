@@ -313,7 +313,7 @@ const AssignLeadsView = ({ showToast, onSelectCustomer, role, currentUser }) => 
     <div className="space-y-3 animate-in fade-in duration-500">
 
       {/* ── Tabs Dropdown ────────────────────────────────────── */}
-      <div className="flex items-center gap-2.5 px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-2xl w-fit shadow-sm">
+      <div className="flex items-center gap-2.5 px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-2xl w-fit shadow-sm relative z-50">
         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-0.5">หมวดหมู่รายชื่อ:</span>
         <CustomSelect
           value={activeTab}
@@ -326,7 +326,7 @@ const AssignLeadsView = ({ showToast, onSelectCustomer, role, currentUser }) => 
       </div>
 
       {/* ── Control Panel ────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-visible">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-visible relative z-40">
 
         {/* Main Row */}
         <div className="p-3.5 flex flex-wrap items-center gap-3">
@@ -610,7 +610,7 @@ const AssignLeadsView = ({ showToast, onSelectCustomer, role, currentUser }) => 
       </div>
 
       {/* ── Filter Bar ───────────────────────────────────────── */}
-      <div className="bg-slate-50/50 p-2.5 rounded-2xl border border-slate-200 flex flex-wrap items-center gap-3">
+      <div className="bg-slate-50/50 p-2.5 rounded-2xl border border-slate-200 flex flex-wrap items-center gap-3 relative z-50">
         <div className="relative flex-1 min-w-[200px]">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
@@ -669,7 +669,7 @@ const AssignLeadsView = ({ showToast, onSelectCustomer, role, currentUser }) => 
       </div>
 
       {/* ── Table ─────────────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden relative z-10">
         <table className="w-full text-left font-sans table-fixed border-collapse">
           <thead className="bg-slate-50 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-100">
             <tr>

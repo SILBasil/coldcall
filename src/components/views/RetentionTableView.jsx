@@ -65,14 +65,14 @@ const getStatusColorClass = (statusStr) => {
 const RetentionTableView = ({ data, onManage, pagination, onPageChange, onToggleGridCell, onUpdateCustomerLocal }) => {
   const [admins, setAdmins] = useState([]);
 
-  useEffect(() => { fetchAdmins(); }, []);
-
   const fetchAdmins = async () => {
     try {
       const all = await leadService.getUsers();
       setAdmins(all.filter(u => u.role === 'admin'));
     } catch (err) { console.error(err); }
   };
+
+  useEffect(() => { fetchAdmins(); }, []);
 
   return (
     <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col h-[calc(100vh-140px)] animate-in fade-in duration-500">

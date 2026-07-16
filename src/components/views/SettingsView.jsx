@@ -12,14 +12,14 @@ const AdminsPage = () => {
   const [editingAdmin, setEditingAdmin] = useState(null);
   const [adminForm, setAdminForm] = useState({ name: '', username: '', password: '', color: '#374151' });
 
-  useEffect(() => { fetchData(); }, []);
-
   const fetchData = async () => {
     setLoading(true);
     const allUsers = await leadService.getUsers();
     setAdmins(allUsers.filter(u => u.role === 'admin'));
     setLoading(false);
   };
+
+  useEffect(() => { fetchData(); }, []);
 
   const handleOpenModal = (admin = null) => {
     if (admin) {
@@ -307,80 +307,14 @@ const TopicsPage = () => {
 
 const DataPage = () => {
   const [syncing, setSyncing] = useState(false);
-  const [mocking, setMocking] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [mockStatus, setMockStatus] = useState({ pct: 0, msg: '' });
-  const [evolutionStep, setEvolutionStep] = useState(0);
-  const [evolving, setEvolving] = useState(false);
-  const [injecting, setInjecting] = useState(false);
-  const [injectingRetention, setInjectingRetention] = useState(false);
+  const [injectingNice, setInjectingNice] = useState(false);
 
 
-  useEffect(() => {
-    const fetchStep = async () => {
-      const step = await leadService.getEvolutionStep();
-      setEvolutionStep(step);
-    };
-    fetchStep();
-  }, []);
 
-  const handleEvolution = async () => {
-    setEvolving(true);
-    try {
-      const nextStep = await leadService.evolveMockupLead();
-      setEvolutionStep(nextStep);
-    } catch (err) {
-      await dialog.alert({ title: 'เกิดข้อผิดพลาด', text: err.message, icon: 'error' });
-    } finally {
-      setEvolving(false);
-    }
-  };
 
-  const handleInjectMockupLeads = async () => {
-    const isConfirmed = await dialog.confirm({
-      title: 'นำเข้าข้อมูลจำลอง?',
-      text: 'ต้องการนำเข้ารายชื่อลูกค้าจำลองจำนวน 15 คนที่ยังไม่ได้มอบหมายงาน ใช่หรือไม่?'
-    });
-    if (!isConfirmed) return;
-    try {
-      setInjecting(true);
-      const res = await leadService.injectUnassignedMockupCustomers(15);
-      if (res.success) {
-        await dialog.alert({
-          title: 'นำเข้าข้อมูลสำเร็จ',
-          text: `นำเข้ารายชื่อลูกค้าจำลองจำนวน ${res.count} คนเสร็จเรียบร้อยแล้ว! สามารถไปที่เมนู 'มอบหมายงาน' เพื่อเลือกแอดมินผู้ดูแลได้ทันที`,
-          icon: 'success'
-        });
-      }
-    } catch (err) {
-      await dialog.alert({ title: 'เกิดข้อผิดพลาด', text: err.message, icon: 'error' });
-    } finally {
-      setInjecting(false);
-    }
-  };
 
-  const handleInjectMockupRetentionLeads = async () => {
-    const isConfirmed = await dialog.confirm({
-      title: 'นำเข้าข้อมูลประจำจำลอง?',
-      text: 'ต้องการนำเข้ารายชื่อลูกค้าประจำจำลองจำนวน 10 คนที่มีประวัติการซื้อต่างกัน (ซื้อครั้งเดียว, ซื้อซ้ำสัปดาห์เดียวกัน, ซื้อคนละวัน/สัปดาห์/เดือน) ที่ยังไม่ได้มอบหมายงาน ใช่หรือไม่?'
-    });
-    if (!isConfirmed) return;
-    try {
-      setInjectingRetention(true);
-      const res = await leadService.injectUnassignedMockupRetentionCustomers(10);
-      if (res.success) {
-        await dialog.alert({
-          title: 'นำเข้าข้อมูลสำเร็จ',
-          text: `นำเข้ารายชื่อลูกค้าประจำจำลองจำนวน ${res.count} คนเสร็จเรียบร้อยแล้ว! สามารถไปที่เมนู 'มอบหมายงาน > แท็บลูกค้าประจำ' เพื่อเลือกแอดมินผู้ดูแลได้ทันที`,
-          icon: 'success'
-        });
-      }
-    } catch (err) {
-      await dialog.alert({ title: 'เกิดข้อผิดพลาด', text: err.message, icon: 'error' });
-    } finally {
-      setInjectingRetention(false);
-    }
-  };
 
 
   const handleSync = async () => {
@@ -391,30 +325,56 @@ const DataPage = () => {
     if (!isConfirmed) return;
     try {
       setSyncing(true);
-      const response = await fetch('/_api/sync');
-      const data = await response.json();
-      if (!data.success) throw new Error(data.error || 'เกิดข้อผิดพลาด');
+      setMockStatus({ pct: 5, msg: 'กำลังเริ่มต้นการเชื่อมต่อ...' });
+      
+      const isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+      
+      if (isProduction) {
+        const data = await leadService.syncFromSheetsHybrid((pct, msg) => {
+          setMockStatus({ pct, msg });
+        });
+        if (!data.success) throw new Error('การนำเข้าข้อมูลล้มเหลว');
+      } else {
+        setMockStatus({ pct: 30, msg: 'กำลังส่งคำขอซิงค์ข้อมูลไปยังเซิร์ฟเวอร์ท้องถิ่น...' });
+        const response = await fetch('/_api/sync');
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error || 'เกิดข้อผิดพลาด');
+      }
       await dialog.alert({ title: 'ซิงค์สำเร็จ', text: 'ซิงค์ข้อมูลเรียบร้อยแล้ว!', icon: 'success' });
     } catch (err) {
       await dialog.alert({ title: 'เกิดข้อผิดพลาด', text: err.message, icon: 'error' });
-    } finally { setSyncing(false); }
+    } finally { 
+      setSyncing(false);
+      setMockStatus({ pct: 0, msg: '' });
+    }
   };
 
 
-  const handleMockup = async () => {
+
+
+  const handleInjectNiceDemoData = async () => {
     const isConfirmed = await dialog.confirm({
-      title: 'จำลองข้อมูลระบบ?',
-      text: 'ต้องการจำลองข้อมูลลูกค้าเก่าจำนวน 150 คนใช่หรือไม่?'
+      title: 'สร้างข้อมูลทดสอบแอดมินไนซ์?',
+      text: 'ต้องการสร้างข้อมูลทดสอบสำหรับแอดมิน "ไนซ์" ใช่หรือไม่? จะมีการนำเข้าข้อมูลลูกค้า ประวัติการโทร และรายงานย้อนหลัง เพื่อใช้ในการแสดงผลระบบ (ใช้เวลาประมาณ 10-30 วินาที)'
     });
     if (!isConfirmed) return;
     try {
-      setMocking(true);
-      setMockStatus({ pct: 5, msg: 'กำลังสร้างข้อมูลจำลอง...' });
-      await leadService.generateMockupData((pct, msg) => setMockStatus({ pct, msg }));
-      await dialog.alert({ title: 'จำลองข้อมูลสำเร็จ', text: 'จำลองข้อมูลเรียบร้อย!', icon: 'success' });
+      setInjectingNice(true);
+      setMockStatus({ pct: 5, msg: 'กำลังเริ่มต้นโหลดข้อมูล...' });
+      const res = await leadService.seedNiceAdminDemoData((pct, msg) => setMockStatus({ pct, msg }));
+      if (res.success) {
+        await dialog.alert({
+          title: 'สำเร็จ',
+          text: 'สร้างข้อมูลทดสอบสำหรับแอดมินไนซ์เรียบร้อยแล้ว!',
+          icon: 'success'
+        });
+      }
     } catch (err) {
       await dialog.alert({ title: 'เกิดข้อผิดพลาด', text: err.message, icon: 'error' });
-    } finally { setMocking(false); setMockStatus({ pct: 0, msg: '' }); }
+    } finally {
+      setInjectingNice(false);
+      setMockStatus({ pct: 0, msg: '' });
+    }
   };
 
   const handleClear = async () => {
@@ -482,28 +442,7 @@ const DataPage = () => {
         <p className="text-xs font-bold text-slate-500 mt-1">ดึงข้อมูล ล้างข้อมูล และสร้างข้อมูลจำลองการใช้งาน</p>
       </div>
 
-      <ActionCard
-        icon={<RotateCw size={22} />}
-        title="Evolution Mockup (จำลองพัฒนาการข้อมูล)"
-        desc={
-          evolutionStep === 0 ? "เริ่มต้นด้วยข้อมูลดิบในสถานะ 'ยังไม่เคยติดต่อ' (ยังไม่มีการกรองข้อมูล)" :
-            evolutionStep === 1 ? "จำลองสถานะแชทบอทคัดกรอง: ย้ายข้อมูลไปที่สถานะ 'สนใจ / ขอข้อมูลเพิ่มเติม'" :
-              evolutionStep === 2 ? "แอดมิน 'ไนซ์' รับงานและติดตามการขาย: ลูกค้าตกลงซื้อสินค้าและเข้าระบบอัตโนมัติ" :
-                evolutionStep === 3 ? "ติดตามและกระตุ้นการสั่งซื้อซ้ำ: ข้อมูลเปลี่ยนเป็นสถานะสั่งซื้อสำเร็จแล้ว" :
-                  "จำลองกระบวนการ Evolution เรียบร้อยแล้ว สามารถเริ่มรอบใหม่ได้ทุกเมื่อ"
-        }
-        buttonLabel={
-          evolutionStep === 0 ? "1. จำลองการนำเข้าข้อมูลลูกค้า" :
-            evolutionStep === 1 ? "2. จำลองคัดกรองโดยแชทบอท" :
-              evolutionStep === 2 ? "3. แอดมินรับช่วงต่อและปิดการขาย" :
-                evolutionStep === 3 ? "4. จำลองระบบสั่งซื้อซ้ำ (Retention)" :
-                  "🔄 เริ่มวงจรจำลองข้อมูลใหม่ (Evolution Reset)"
-        }
-        buttonColor={evolutionStep === 4 ? 'rose' : 'indigo'}
-        onClick={handleEvolution}
-        loading={evolving}
-        loadingLabel="กำลังจำลองข้อมูลขั้นตอนถัดไป..."
-      />
+
 
       <ActionCard
         icon={<RotateCw size={22} />}
@@ -513,42 +452,23 @@ const DataPage = () => {
         buttonColor="emerald"
         onClick={handleSync}
         loading={syncing}
-        loadingLabel="กำลังซิงค์ข้อมูล..."
+        loadingLabel={mockStatus.msg || 'กำลังซิงค์ข้อมูล...'}
+        progress={syncing ? mockStatus : null}
       />
 
       <ActionCard
         icon={<Palette size={22} />}
-        title="สร้างข้อมูลจำลองเพื่อจัดแสดงระบบ (Demo Injection)"
-        desc="สร้างข้อมูลลูกค้า 150 ราย พร้อมจำลองประวัติการติดตามย้อนหลัง 1 เดือน เพื่อทดสอบรายงานและตารางสถิติต่าง ๆ"
-        buttonLabel="✨ จำลองข้อมูลระบบ CRM ทั้งหมด (Inject Demo Data)"
+        title="สร้างข้อมูลทดสอบสำหรับแอดมิน ไนซ์ (Nice's Demo Data)"
+        desc="นำเข้าข้อมูลลูกค้า 120 ราย ประวัติการติดต่อกว่า 600 รายการ และรายงานผลงานย้อนหลัง 8 สัปดาห์ เพื่อใช้เป็นตัวอย่างในการจัดแสดงระบบการทำงานจริงของแอดมิน"
+        buttonLabel="✨ สร้างข้อมูลทดสอบแอดมินไนซ์"
         buttonColor="indigo"
-        onClick={handleMockup}
-        loading={mocking}
-        loadingLabel={mockStatus.msg || 'กำลังจำลองข้อมูลลูกค้า...'}
-        progress={mocking ? mockStatus : null}
+        onClick={handleInjectNiceDemoData}
+        loading={injectingNice}
+        loadingLabel={mockStatus.msg || 'กำลังสร้างข้อมูล...'}
+        progress={injectingNice ? mockStatus : null}
       />
 
-      <ActionCard
-        icon={<Plus size={22} />}
-        title="นำเข้ารายชื่อลูกค้าจำลอง 15 ราย (Unassigned Mockup Leads)"
-        desc="นำเข้าข้อมูลลูกค้าใหม่ 15 รายที่จำลองโปรไฟล์ธุรกิจที่หลากหลายในประเทศไทย โดยไม่มีการระบุผู้ดูแล เพื่อให้ผู้จัดการ (Manager) ทดสอบระบบมอบหมายงานได้ทันที"
-        buttonLabel="✨ นำเข้ารายชื่อลูกค้าจำลอง 15 คน"
-        buttonColor="emerald"
-        onClick={handleInjectMockupLeads}
-        loading={injecting}
-        loadingLabel="กำลังนำเข้าข้อมูลลูกค้าจำลอง..."
-      />
 
-      <ActionCard
-        icon={<ShoppingBag size={22} />}
-        title="นำเข้ารายชื่อลูกค้าประจำจำลอง (Unassigned Retention Customers)"
-        desc="นำเข้าข้อมูลลูกค้าประจำ 10 รายที่มีประวัติการสั่งซื้อครบครัน โดยไม่มีการระบุผู้ดูแล เพื่อให้ผู้จัดการ (Manager) ทดสอบระบบมอบหมายงานและการติดตามลูกค้าประจำ (Retention) ได้ทันที มีประวัติซื้อครั้งเดียว ซื้อต่างสัปดาห์ ต่างเดือน และซื้อสองครั้งในสัปดาห์เดียวกันคนละวันตามโจทย์จริง"
-        buttonLabel="✨ นำเข้ารายชื่อลูกค้าประจำจำลอง 10 คน"
-        buttonColor="emerald"
-        onClick={handleInjectMockupRetentionLeads}
-        loading={injectingRetention}
-        loadingLabel="กำลังนำเข้าลูกค้าประจำจำลอง..."
-      />
 
 
       <div className="border-t border-slate-200 pt-6">

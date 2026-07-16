@@ -22,6 +22,7 @@ import {
   User,
   UserX,
   Trash2,
+  PieChart,
 } from 'lucide-react';
 
 // Components
@@ -29,6 +30,9 @@ import NavItem from './components/common/NavItem';
 import LoginView from './components/views/LoginView';
 import AdminDashboardView from './components/views/AdminDashboardView';
 import ManagerDashboardView from './components/views/ManagerDashboardView';
+import ManagerDashboardV2 from './components/views/ManagerDashboardV2';
+import ManagerDashboardV3 from './components/views/ManagerDashboardV3';
+import ManagerDashboardV4 from './components/views/ManagerDashboardV4';
 import CustomerListView from './components/views/CustomerListView';
 import LeadEntryForm from './components/views/LeadEntryForm';
 import RetentionTrackingForm from './components/views/RetentionTrackingForm';
@@ -44,44 +48,60 @@ import { leadService } from './services/leadService';
 
 // ─── Role-based menu config ───────────────────────────────────────────────────
 const ADMIN_MENU = [
-  { key: 'dashboard',  label: 'แดชบอร์ด',            icon: LayoutDashboard },
-  { key: 'new-leads',  label: 'เบอร์ใหม่',              icon: PhoneCall },
-  { key: 'follow-up',  label: 'ลูกค้ารอตัดสินใจ',     icon: UserPlus },
-  { key: 'retention',  label: 'ลูกค้าประจำ',           icon: Repeat },
-  { key: 'lost-customers', label: 'ลูกค้าหาย',         icon: UserX },
+  { key: 'dashboard', label: 'แดชบอร์ด', icon: LayoutDashboard },
+  { key: 'new-leads', label: 'เบอร์ใหม่', icon: PhoneCall },
+  { key: 'follow-up', label: 'ลูกค้ารอตัดสินใจ', icon: UserPlus },
+  { key: 'retention', label: 'ลูกค้าประจำ', icon: Repeat },
 ];
 
 const MANAGER_MENU = [
-  { key: 'dashboard',  label: 'แดชบอร์ดภาพรวม',      icon: LayoutDashboard },
-  { key: 'master-pool',label: 'คลังเบอร์โทร',          icon: Database },
-  { key: 'new-leads',  label: 'รายชื่อเบอร์ใหม่',        icon: PhoneCall },
-  { key: 'follow-up',  label: 'ลูกค้ารอตัดสินใจ',      icon: UserPlus },
-  { key: 'retention',  label: 'งานลูกค้าประจำ',        icon: Repeat },
-  { key: 'lost-customers', label: 'ลูกค้าหาย',         icon: UserX },
-  { key: 'assign',     label: 'มอบหมายงาน',            icon: UserCog },
-  { key: 'activity',   label: 'การทำงานแอดมิน',        icon: Activity },
-  { key: 'trash',      label: 'ถังขยะรายชื่อ',         icon: Trash2 },
+  { key: 'dashboard', label: 'แดชบอร์ดภาพรวม', icon: LayoutDashboard },
+  { key: 'dashboard2', label: 'แดชบอร์ด 2 (Compact)', icon: BarChart3 },
+  { key: 'dashboard3', label: 'เซนตอร์ CMD (V3)', icon: Activity },
+  { key: 'dashboard4', label: 'แดชบอร์ด V4 (งานลูกค้าประจำ)', icon: PieChart },
+  { key: 'master-pool', label: 'คลังเบอร์โทร', icon: Database },
+  { key: 'new-leads', label: 'รายชื่อเบอร์ใหม่', icon: PhoneCall },
+  { key: 'follow-up', label: 'ลูกค้ารอตัดสินใจ', icon: UserPlus },
+  { key: 'retention', label: 'งานลูกค้าประจำ', icon: Repeat },
+  { key: 'assign', label: 'มอบหมายงาน', icon: UserCog },
+  { key: 'activity', label: 'การทำงานแอดมิน', icon: Activity },
+  { key: 'trash', label: 'ถังขยะรายชื่อ', icon: Trash2 },
 ];
 
 const SETTINGS_SUBMENU = [
   { key: 'admins', label: 'จัดการแอดมิน', icon: '👤' },
-  { key: 'topics', label: 'หัวข้อคำถาม',   icon: '📋' },
-  { key: 'data',   label: 'จัดการข้อมูล',  icon: '🗄️' },
+  { key: 'topics', label: 'หัวข้อคำถาม', icon: '📋' },
+  { key: 'data', label: 'จัดการข้อมูล', icon: '🗄️' },
+];
+
+const RETENTION_SUBMENU = [
+  { key: 'retention-pending', label: 'ถึงรอบติดตาม', icon: '⏱️' },
+  { key: 'retention-tracked', label: 'ลูกค้ารอติดตาม', icon: '📞' },
+  { key: 'retention-ordered', label: 'รอเข้ารอบติดตามใหม่', icon: '🛍️' },
+  { key: 'lost-customers', label: 'ลูกค้าหาย', icon: '⚠️' },
+  { key: 'retention-all', label: 'ลูกค้าประจำทั้งหมด', icon: '👥' },
 ];
 
 // Page title map
 const PAGE_TITLES = {
-  dashboard:     'ภาพรวมการทำงาน',
+  dashboard: 'ภาพรวมการทำงาน',
+  dashboard2: 'แดชบอร์ด Compact (V2)',
+  dashboard3: 'Command Center (V3)',
+  dashboard4: 'แดชบอร์ด V4 (งานลูกค้าประจำ)',
   'master-pool': 'คลังเบอร์โทร',
-  'new-leads':   'เบอร์ใหม่',
-  'follow-up':   'ลูกค้ารอตัดสินใจ',
-  retention:     'ลูกค้าประจำ',
+  'new-leads': 'เบอร์ใหม่',
+  'follow-up': 'ลูกค้ารอตัดสินใจ',
+  retention: 'ลูกค้าประจำ',
+  'retention-pending': 'ลูกค้าประจำ (ถึงรอบติดตาม)',
+  'retention-tracked': 'ลูกค้าประจำ (ลูกค้ารอติดตาม)',
+  'retention-ordered': 'ลูกค้าประจำ (รอเข้ารอบติดตามใหม่)',
   'lost-customers': 'ลูกค้าหาย',
-  performance:   'ประสิทธิผลงาน',
-  assign:        'มอบหมายงาน',
-  activity:      'ประวัติการทำงาน',
-  settings:      'ตั้งค่าระบบ',
-  trash:         'ถังขยะรายชื่อ',
+  'retention-all': 'ลูกค้าประจำทั้งหมด',
+  performance: 'ประสิทธิผลงาน',
+  assign: 'มอบหมายงาน',
+  activity: 'ประวัติการทำงาน',
+  settings: 'ตั้งค่าระบบ',
+  trash: 'ถังขยะรายชื่อ',
 };
 
 export default function App() {
@@ -102,6 +122,7 @@ export default function App() {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [message, setMessage] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [retentionOpen, setRetentionOpen] = useState(true);
   const [activeSettingsSection, setActiveSettingsSection] = useState(null);
   const sessionStartRef = React.useRef(user ? Date.now() : null);
 
@@ -112,7 +133,7 @@ export default function App() {
 
   // Clear retention filters when switching to other menus
   useEffect(() => {
-    if (view !== 'retention' && view !== 'call-retention' && view !== 'view-retention') {
+    if (view !== 'retention' && view !== 'call-retention' && view !== 'view-retention' && !view.startsWith('retention-') && view !== 'lost-customers' && !view.startsWith('call-retention-') && !view.startsWith('view-retention-') && view !== 'call-lost-customers' && view !== 'view-lost-customers') {
       sessionStorage.removeItem('retention_retentionSubTab');
       sessionStorage.removeItem('retention_searchTerm');
       sessionStorage.removeItem('retention_currentPage');
@@ -165,7 +186,7 @@ export default function App() {
         const prefix = nextLead.stage === 'customer' ? 'call-retention' : 'call-leads';
         setView(prefix);
         if (!customer || !customer.id) {
-           showToast(`กำลังโหลดลูกค้าถัดไป: ${nextLead.name}`);
+          showToast(`กำลังโหลดลูกค้าถัดไป: ${nextLead.name}`);
         }
       } else {
         showToast("ไม่พบลูกค้ารอการติดต่อในขณะนี้", "info");
@@ -193,7 +214,7 @@ export default function App() {
     setView(key);
     if (key === 'master-pool') {
       setActiveTab('all');
-    } else if (key === 'new-leads' || key === 'follow-up' || key === 'retention') {
+    } else if (key === 'new-leads' || key === 'follow-up' || key === 'retention' || key.startsWith('retention-') || key === 'lost-customers') {
       setActiveTab(isManager ? 'all' : 'my');
     }
     // Log page navigation
@@ -221,14 +242,14 @@ export default function App() {
         {/* Logo */}
         <div className="h-20 pt-6 flex items-center justify-center px-6 shrink-0 transition-all mb-2">
           <div className="flex items-center gap-4 group cursor-pointer">
-             <div className="bg-gradient-to-tr from-primary to-sky-400 p-3 rounded-2xl shadow-xl shadow-primary/20 rotate-[-8deg] group-hover:rotate-0 transition-all duration-500">
-                <PhoneCall size={24} className="text-white" />
-             </div>
+            <div className="bg-gradient-to-tr from-primary to-sky-400 p-3 rounded-2xl shadow-xl shadow-primary/20 rotate-[-8deg] group-hover:rotate-0 transition-all duration-500">
+              <PhoneCall size={24} className="text-white" />
+            </div>
             {isSidebarOpen && (
               <div className="flex flex-col">
-              <div className="text-lg font-black text-slate-800 tracking-widest uppercase italic leading-none">
-                COLDCALL
-              </div>
+                <div className="text-lg font-black text-slate-800 tracking-widest uppercase italic leading-none">
+                  COLDCALL
+                </div>
                 <span className="text-[11px] font-black text-primary uppercase tracking-[0.4em] mt-1.5 opacity-80">ศูนย์บริหารการขาย</span>
               </div>
             )}
@@ -239,10 +260,63 @@ export default function App() {
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto custom-scrollbar">
-           <div className={`px-5 mb-3 text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] ${!isSidebarOpen && 'hidden'}`}>
-             เมนูการทำงานหลัก
-           </div>
+          <div className={`px-5 mb-3 text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] ${!isSidebarOpen && 'hidden'}`}>
+            เมนูการทำงานหลัก
+          </div>
           {menu.map(({ key, label, icon: Icon }) => {
+            if (key === 'retention') {
+              const isChildActive = view.startsWith('retention-') || view === 'lost-customers';
+              return (
+                <div key={key}>
+                  <button
+                    onClick={() => setRetentionOpen(o => !o)}
+                    title={!isSidebarOpen ? label : undefined}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group relative border-none cursor-pointer
+                      ${isChildActive ? 'bg-sky-50 text-primary font-black shadow-sm' : 'text-slate-600 hover:text-primary hover:bg-sky-50/50 font-bold'}
+                      ${!isSidebarOpen ? 'justify-center px-0' : ''}
+                    `}
+                  >
+                    <div className={`transition-all shrink-0 ${isChildActive ? 'text-primary' : 'text-slate-400 group-hover:text-primary'}`}>
+                      <Icon size={16} />
+                    </div>
+                    {isSidebarOpen && (
+                      <>
+                        <span className="text-[13px] tracking-normal truncate flex-1 text-left">{label}</span>
+                        <ChevronDown
+                          size={14}
+                          className={`transition-transform duration-200 ${retentionOpen ? 'rotate-180' : ''} text-slate-400 group-hover:text-primary`}
+                        />
+                      </>
+                    )}
+                  </button>
+
+                  {/* Submenu */}
+                  {retentionOpen && isSidebarOpen && (
+                    <div className="ml-4 mt-1 space-y-0.5 border-l border-slate-100 pl-3">
+                      {RETENTION_SUBMENU.map(sub => {
+                        const isSubActive = view === sub.key || view.startsWith('call-' + sub.key) || view.startsWith('view-' + sub.key);
+                        return (
+                          <button
+                            key={sub.key}
+                            onClick={() => handleNavClick(sub.key)}
+                            className={`w-full text-left px-3 py-2 rounded-xl text-[12px] font-bold transition-all duration-150 border-none cursor-pointer flex items-center gap-2
+                              ${isSubActive
+                                ? 'bg-sky-100/50 text-primary font-black'
+                                : 'text-slate-500 hover:text-primary hover:bg-sky-50/30'
+                              }
+                            `}
+                          >
+                            <span className="text-xs">{sub.icon}</span>
+                            <span>{sub.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
             const isActive = view === key || (view.startsWith('call-' + key) || view.startsWith('view-' + key));
             return (
               <NavItem
@@ -294,10 +368,9 @@ export default function App() {
                         setActiveSettingsSection(sub.key);
                       }}
                       className={`w-full text-left px-3 py-2 rounded-xl text-[12px] font-bold transition-all duration-150 border-none cursor-pointer
-                        ${
-                          view === 'settings' && activeSettingsSection === sub.key
-                            ? 'bg-sky-100/50 text-primary'
-                            : 'text-slate-500 hover:text-primary hover:bg-sky-50/30'
+                        ${view === 'settings' && activeSettingsSection === sub.key
+                          ? 'bg-sky-100/50 text-primary'
+                          : 'text-slate-500 hover:text-primary hover:bg-sky-50/30'
                         }
                       `}
                     >
@@ -308,9 +381,9 @@ export default function App() {
               )}
             </div>
           )}
-          
+
           <hr className="my-4 border-slate-100" />
-          
+
           <div className={`px-4 mb-2 text-xs font-extrabold text-slate-400 uppercase tracking-widest ${!isSidebarOpen && 'hidden'}`}>
             Role: {isManager ? 'Manager' : 'Admin'}
           </div>
@@ -318,9 +391,9 @@ export default function App() {
 
         {/* Sidebar Footer (Optional) */}
         <div className={`p-4 transition-all opacity-40 hover:opacity-100 ${!isSidebarOpen && 'hidden'}`}>
-           <div className="text-[11px] text-slate-400 text-center font-bold tracking-[0.2em] uppercase">
-              V1.5.0 BUILD
-           </div>
+          <div className="text-[11px] text-slate-400 text-center font-bold tracking-[0.2em] uppercase">
+            V1.5.0 BUILD
+          </div>
         </div>
       </aside>
 
@@ -360,27 +433,27 @@ export default function App() {
           <div className="flex items-center gap-2 ml-auto">
             {/* Notifications */}
             <button className="p-2.5 text-slate-600 hover:text-slate-800 relative bg-slate-50/50 rounded-xl transition-colors border-none cursor-pointer">
-               <Bell size={18} />
-               <span className="absolute top-2 right-2 w-3.5 h-3.5 bg-danger text-white text-[10px] font-black rounded-full flex items-center justify-center border-2 border-white pointer-events-none">3</span>
+              <Bell size={18} />
+              <span className="absolute top-2 right-2 w-3.5 h-3.5 bg-danger text-white text-[10px] font-black rounded-full flex items-center justify-center border-2 border-white pointer-events-none">3</span>
             </button>
-            
+
             {/* User Info */}
             <div className="flex items-center gap-4 pl-4 border-l border-slate-100 ml-4 group cursor-pointer">
-               <div className="text-right hidden md:block">
-                  <div className="text-xs font-black text-slate-800 tracking-tight leading-none mb-0.5">{user?.name}</div>
-                  <div className="text-[10px] font-black text-slate-600 uppercase tracking-widest opacity-60 italic">{user?.role}</div>
-               </div>
-               <div className="w-10 h-10 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shadow-inner group-hover:border-primary/20 transition-all">
-                  <User size={20} className="text-slate-500 group-hover:text-primary transition-colors" />
-               </div>
+              <div className="text-right hidden md:block">
+                <div className="text-xs font-black text-slate-800 tracking-tight leading-none mb-0.5">{user?.name}</div>
+                <div className="text-[10px] font-black text-slate-600 uppercase tracking-widest opacity-60 italic">{user?.role}</div>
+              </div>
+              <div className="w-10 h-10 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shadow-inner group-hover:border-primary/20 transition-all">
+                <User size={20} className="text-slate-500 group-hover:text-primary transition-colors" />
+              </div>
             </div>
-            
-             <button
-               onClick={handleLogout}
-               className="ml-4 p-2.5 text-slate-600 hover:text-danger hover:bg-danger/5 rounded-xl transition-all border-none cursor-pointer"
-               title="Logout"
+
+            <button
+              onClick={handleLogout}
+              className="ml-4 p-2.5 text-slate-600 hover:text-danger hover:bg-danger/5 rounded-xl transition-all border-none cursor-pointer"
+              title="Logout"
             >
-               <LogOut size={16} />
+              <LogOut size={16} />
             </button>
           </div>
         </header>
@@ -390,18 +463,21 @@ export default function App() {
           <div className="mx-auto w-full">
             {/* ── Dashboard ── */}
             {view === 'dashboard' && isManager && <ManagerDashboardView />}
-            {view === 'dashboard' && !isManager && <AdminDashboardView 
-                adminId={currentAdminId} 
-                onNextLead={handleNextLead} 
-                onSelectCustomer={(c) => {
-                    setSelectedCustomer(c);
-                    const prefix = c.stage === 'customer' ? 'call-retention' : 'call-follow-up';
-                    setView(prefix);
-                }} 
+            {view === 'dashboard2' && isManager && <ManagerDashboardV2 />}
+            {view === 'dashboard3' && isManager && <ManagerDashboardV3 />}
+            {view === 'dashboard4' && isManager && <ManagerDashboardV4 />}
+            {view === 'dashboard' && !isManager && <AdminDashboardView
+              adminId={currentAdminId}
+              onNextLead={handleNextLead}
+              onSelectCustomer={(c) => {
+                setSelectedCustomer(c);
+                const prefix = c.stage === 'customer' ? 'call-retention' : 'call-follow-up';
+                setView(prefix);
+              }}
             />}
 
             {/* ── Customer Lists ── */}
-            {(view === 'master-pool' || view === 'new-leads' || view === 'follow-up' || view === 'retention') && (
+            {(view === 'master-pool' || view === 'new-leads' || view === 'follow-up' || view === 'retention' || view.startsWith('retention-')) && (
               <CustomerListView
                 key={view}
                 type={view}
@@ -426,8 +502,8 @@ export default function App() {
             {(view === 'view-new-leads' || view === 'view-follow-up' || view === 'view-master-pool') && <LeadEntryForm customer={selectedCustomer} onBack={() => setView(view.replace('view-', ''))} showToast={showToast} readonly currentAdminId={currentAdminId} currentAdminName={user?.name} />}
 
             {/* ── Retention Detail ── */}
-            {view === 'call-retention' && <RetentionTrackingForm customer={selectedCustomer} onBack={() => setView('retention')} showToast={showToast} currentAdminId={currentAdminId} currentAdminName={user?.name} />}
-            {view === 'view-retention' && <RetentionTrackingForm customer={selectedCustomer} onBack={() => setView('retention')} showToast={showToast} readonly />}
+            {(view === 'call-retention' || view.startsWith('call-retention-')) && <RetentionTrackingForm customer={selectedCustomer} onBack={() => setView(view.replace('call-', ''))} showToast={showToast} currentAdminId={currentAdminId} currentAdminName={user?.name} />}
+            {(view === 'view-retention' || view.startsWith('view-retention-')) && <RetentionTrackingForm customer={selectedCustomer} onBack={() => setView(view.replace('view-', ''))} showToast={showToast} readonly />}
 
             {/* ── Lost Customers ── */}
             {view === 'lost-customers' && (

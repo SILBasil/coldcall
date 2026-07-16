@@ -135,7 +135,7 @@ const HistoryCalendar = ({ logs, onRestore, onClose }) => {
           ) : selectedLogs.map((log, i) => (
             <button 
               key={i} 
-              onClick={() => log.snapshot && onRestore(log.snapshot)}
+              onClick={() => log.snapshot && onRestore(log.snapshot, log)}
               disabled={!log.snapshot}
               className={`w-full text-left p-3.5 rounded-2xl border transition-all flex items-center justify-between mb-2 last:mb-0 cursor-pointer
                 ${log.snapshot ? 'bg-white border-slate-100 hover:border-primary/40 hover:shadow-lg hover:bg-primary/[0.02] group/item active:scale-[0.98]' : 'bg-slate-50/50 border-slate-50 opacity-60 cursor-default'}

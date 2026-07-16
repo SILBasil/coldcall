@@ -17,6 +17,7 @@ const LeadEntryForm = ({ customer, onBack, showToast, currentAdminId, currentAdm
   const [matchingTopics, setMatchingTopics] = useState([]);
   const [masterTopics, setMasterTopics] = useState([]);
   const [showTopicPicker, setShowTopicPicker] = useState(false);
+  const [restoredHistoryLog, setRestoredHistoryLog] = useState(null);
 
   const [formState, setFormState] = useState({
     checklist: { chat: false, group: false, remark: '' },
@@ -457,9 +458,10 @@ const LeadEntryForm = ({ customer, onBack, showToast, currentAdminId, currentAdm
                 <HistoryCalendar 
                   logs={historyLogs} 
                   onClose={() => setIsHistoryOpen(false)}
-                  onRestore={(snapshot) => {
+                  onRestore={(snapshot, log) => {
                     if (snapshot.formState) setFormState(prev => ({ ...prev, ...snapshot.formState }));
                     if (snapshot.matchingTopics) setMatchingTopics(snapshot.matchingTopics);
+                    if (log) setRestoredHistoryLog(log);
                     showToast("ดึงข้อมูลย้อนหลังจากประวัติสำเร็จ");
                     setIsHistoryOpen(false);
                   }} 
@@ -470,6 +472,22 @@ const LeadEntryForm = ({ customer, onBack, showToast, currentAdminId, currentAdm
 
         <div className={`grid grid-cols-1 lg:grid-cols-12 gap-6 items-start ${readonly && 'opacity-80 pointer-events-none'}`}>
          <div className="lg:col-span-8 space-y-6">
+           {restoredHistoryLog && (
+             <div className="bg-sky-50 border border-sky-300 p-3 rounded-xl shadow-sm flex items-start gap-3">
+               <HistoryIcon className="text-sky-500 mt-0.5 shrink-0" size={16} />
+               <div>
+                 <div className="text-[10px] font-black text-sky-800 uppercase tracking-widest italic mb-1">กำลังดูประวัติย้อนหลัง</div>
+                 <div className="text-xs font-bold text-sky-700 leading-snug">
+                   {(() => {
+                     const ts = restoredHistoryLog.timestamp;
+                     if (!ts) return 'ไม่ทราบวันที่';
+                     const d = typeof ts.toDate === 'function' ? ts.toDate() : (ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts));
+                     return `บันทึกเมื่อ: ${d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })} เวลา ${d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.`;
+                   })()}
+                 </div>
+               </div>
+             </div>
+           )}
            <div className="bg-white rounded-[2.5rem] shadow-sm overflow-hidden border border-slate-100 group/section">
              <div className="bg-slate-50/50 px-8 py-4 border-b border-slate-100 flex justify-between items-center group-hover/section:bg-primary/5 transition-colors duration-500">
                <div className="flex items-center gap-4">

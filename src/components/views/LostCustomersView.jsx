@@ -258,7 +258,7 @@ export default function LostCustomersView({ currentAdminId, currentAdminName, is
     <div className="space-y-4 animate-in fade-in duration-500">
 
       {/* Filter Row */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm font-sans">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm font-sans relative z-50">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
           <input
@@ -328,7 +328,7 @@ export default function LostCustomersView({ currentAdminId, currentAdminName, is
       </div>
 
       {/* Special Frequency Filters Row */}
-      <div className="flex flex-wrap items-center gap-3 bg-white p-3 rounded-2xl border border-slate-100 shadow-sm font-sans">
+      <div className="flex flex-wrap items-center gap-3 bg-white p-3 rounded-2xl border border-slate-100 shadow-sm font-sans relative z-40">
         <div className="text-xs font-black text-slate-400 uppercase tracking-widest px-2 border-r border-slate-100">
            ตัวกรองพิเศษ :
         </div>
@@ -375,7 +375,7 @@ export default function LostCustomersView({ currentAdminId, currentAdminName, is
       </div>
 
       {/* Table list */}
-      <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden font-sans">
+      <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden font-sans relative z-10">
         <div className="overflow-x-auto">
           <table className="w-full border-collapse table-fixed">
             <thead>

@@ -104,6 +104,45 @@ export default function TrashView({ showToast }) {
     }
   };
 
+  const handleBulkRestore = async () => {
+    if (selected.length === 0) return;
+    if (!window.confirm(`ยืนยันการกู้คืนลูกค้าที่เลือกจำนวน ${selected.length} รายการ?`)) return;
+    
+    setLoading(true);
+    try {
+      // Create an array of promises for restoring all selected customers
+      const restorePromises = selected.map(id => {
+        const customer = leads.find(l => l.id === id);
+        if (customer) {
+          return leadService.restoreCustomer(id).then(() => {
+            const origStage = customer.trashOriginalStage || 'pool';
+            return leadService.logActivity({
+              adminId: 'manager',
+              adminName: 'Manager',
+              action: `กู้คืนรายชื่อ "${customer.name || customer.phone}" กลับไปที่ stage "${origStage}" (แบบกลุ่ม)`,
+              type: 'restore-lead',
+              customerId: customer.id,
+              customerName: customer.name,
+              customerPhone: customer.phone,
+              customerStage: origStage
+            });
+          });
+        }
+        return Promise.resolve();
+      });
+
+      await Promise.all(restorePromises);
+      
+      showToast(`กู้คืนรายชื่อ ${selected.length} รายการเรียบร้อยแล้ว`, "success");
+      setSelected([]);
+      await fetchTrashLeads();
+    } catch (err) {
+      console.error(err);
+      showToast("กู้คืนรายชื่อล้มเหลว", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
 
 
   const filteredLeads = leads.filter(l => {

@@ -128,10 +128,9 @@ const getIsFollowedUpChecked = (customer, todayDate) => {
   const actionDate = parseAnyDate(customer.lastActionDate) || parseAnyDate(customer.lastCallDate);
   if (!actionDate) return false;
   
-  const freq = getFrequencyInWeeks(customer.freqAmount, customer.freqUnit);
   const elapsedWeeks = getWeeksBetween(actionDate, todayDate);
   
-  return elapsedWeeks >= 0 && elapsedWeeks < freq;
+  return elapsedWeeks === 0;
 };
 
 const getIsOrderChecked = (customer, todayDate) => {
@@ -156,13 +155,47 @@ const getIsOrderChecked = (customer, todayDate) => {
                     parseAnyDate(customer.lastCallDate);
   if (!orderDate) return false;
   
-  const freq = getFrequencyInWeeks(customer.freqAmount, customer.freqUnit);
   const elapsedWeeks = getWeeksBetween(orderDate, todayDate);
   
-  return elapsedWeeks >= 0 && elapsedWeeks < freq;
+  return elapsedWeeks === 0;
 };
 
 
+const getWeekDays = (baseDate) => {
+  const d = new Date(baseDate);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1); 
+  const monday = new Date(d.setDate(diff));
+  
+  const weekDays = [];
+  for (let i = 0; i < 5; i++) { 
+    const date = new Date(monday);
+    date.setDate(monday.getDate() + i);
+    weekDays.push(date);
+  }
+  return weekDays;
+};
+
+const isDateTracked = (customer, date) => {
+  const y = date.getFullYear();
+  const m = (date.getMonth() + 1).toString().padStart(2, '0');
+  const d = date.getDate().toString().padStart(2, '0');
+  const kDate = `${y}-${m}-${d}`;
+  
+  if (customer.gridData && customer.gridData[`${kDate}-followup`] !== undefined) {
+     return customer.gridData[`${kDate}-followup`] === true;
+  }
+  
+  const lastCall = parseAnyDate(customer.lastCallDate) || parseAnyDate(customer.lastActionDate);
+  if (lastCall) {
+     const ly = lastCall.getFullYear();
+     const lm = (lastCall.getMonth() + 1).toString().padStart(2, '0');
+     const ld = lastCall.getDate().toString().padStart(2, '0');
+     if (`${ly}-${lm}-${ld}` === kDate) return true;
+  }
+  
+  return false;
+};
 
 const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdminId, currentAdminName, role, showToast, onCall }) => {
   const isManager = role === 'manager';
@@ -175,28 +208,35 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [pagination, setPagination] = useState({ total: 0, count: 0, hasMore: false });
   const [cursorHistory, setCursorHistory] = useState([null]); // [0, Page1LastDoc, Page2LastDoc, ...]
-  const [currentPage, setCurrentPage] = useState(() => type === 'retention' ? (parseInt(sessionStorage.getItem('retention_currentPage')) || 1) : 1);
+  const [currentPage, setCurrentPage] = useState(() => type?.startsWith('retention') ? (parseInt(sessionStorage.getItem('retention_currentPage')) || 1) : 1);
   const [admins, setAdmins] = useState([]);
   const [assignedThisWeekIds, setAssignedThisWeekIds] = useState(new Set());
   const [completedThisWeekIds, setCompletedThisWeekIds] = useState(new Set());
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState(() => type === 'retention' ? (sessionStorage.getItem('retention_searchTerm') || '') : '');
-  const [debouncedSearch, setDebouncedSearch] = useState(() => type === 'retention' ? (sessionStorage.getItem('retention_searchTerm') || '') : '');
+  const [searchTerm, setSearchTerm] = useState(() => type?.startsWith('retention') ? (sessionStorage.getItem('retention_searchTerm') || '') : '');
+  const [debouncedSearch, setDebouncedSearch] = useState(() => type?.startsWith('retention') ? (sessionStorage.getItem('retention_searchTerm') || '') : '');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterActionDate, setFilterActionDate] = useState('all'); // 'all', 'today', 'not_today'
-  const [retentionSubTab, setRetentionSubTab] = useState(() => type === 'retention' ? (sessionStorage.getItem('retention_retentionSubTab') || 'all') : 'all');
+    const [retentionSubTab, setRetentionSubTab] = useState(() => {
+    if (type === 'retention-pending') return 'pending';
+    if (type === 'retention-tracked') return 'tracked';
+    if (type === 'retention-ordered') return 'ordered';
+    if (type === 'retention-all') return 'all';
+    return type?.startsWith('retention') ? (sessionStorage.getItem('retention_retentionSubTab') || 'all') : 'all';
+  });
   
   // Retention Manual Dropdowns
-  const [filterFreqAmt, setFilterFreqAmt] = useState(() => type === 'retention' ? (sessionStorage.getItem('retention_filterFreqAmt') || '') : '');
-  const [filterFreqUnit, setFilterFreqUnit] = useState(() => type === 'retention' ? (sessionStorage.getItem('retention_filterFreqUnit') || '') : '');
-  const [filterTrackStatus, setFilterTrackStatus] = useState(() => type === 'retention' ? (sessionStorage.getItem('retention_filterTrackStatus') || '') : '');
-  const [filterOrderStatus, setFilterOrderStatus] = useState(() => type === 'retention' ? (sessionStorage.getItem('retention_filterOrderStatus') || '') : '');
+  const [filterFreqAmt, setFilterFreqAmt] = useState(() => sessionStorage.getItem('retention_filterFreqAmt') || '');
+  const [filterFreqUnit, setFilterFreqUnit] = useState(() => sessionStorage.getItem('retention_filterFreqUnit') || '');
+  const [filterTrackStatus, setFilterTrackStatus] = useState(() => sessionStorage.getItem('retention_filterTrackStatus') || '');
+  const [filterOrderStatus, setFilterOrderStatus] = useState(() => sessionStorage.getItem('retention_filterOrderStatus') || '');
 
   // Time Machine for Retention testing
   const [mockTodayStr, setMockTodayStr] = useState(() => {
     return localStorage.getItem('mockTodayStr') || new Date().toISOString().split('T')[0];
   });
   const mockToday = new Date(mockTodayStr);
+  const currentWeekDays = getWeekDays(mockToday);
 
   useEffect(() => {
     localStorage.setItem('mockTodayStr', mockTodayStr);
@@ -210,7 +250,28 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
   const [importSummary, setImportSummary] = useState({ success: 0, duplicate: 0, invalid: 0, failed: 0, total: 0 });
 
   useEffect(() => {
-    if (type === 'retention') {
+    if (type?.startsWith('retention')) {
+      const lastType = sessionStorage.getItem('lastRetentionType');
+      if (lastType && lastType !== type) {
+        // Clear all filters from state
+        setSearchTerm('');
+        setDebouncedSearch('');
+        setFilterFreqAmt('');
+        setFilterFreqUnit('');
+        setFilterTrackStatus('');
+        setFilterOrderStatus('');
+        setCurrentPage(1);
+
+        // Also clear them from sessionStorage
+        sessionStorage.removeItem('retention_searchTerm');
+        sessionStorage.removeItem('retention_filterFreqAmt');
+        sessionStorage.removeItem('retention_filterFreqUnit');
+        sessionStorage.removeItem('retention_filterTrackStatus');
+        sessionStorage.removeItem('retention_filterOrderStatus');
+        sessionStorage.removeItem('retention_currentPage');
+      }
+      sessionStorage.setItem('lastRetentionType', type);
+
       setFilterStatus('all');
       setFilterActionDate('all');
       setLeads([]);
@@ -236,7 +297,7 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
 
   // Persist retention filters in sessionStorage
   useEffect(() => {
-    if (type === 'retention') {
+    if (type?.startsWith('retention')) {
       sessionStorage.setItem('retention_retentionSubTab', retentionSubTab);
       sessionStorage.setItem('retention_searchTerm', searchTerm);
       sessionStorage.setItem('retention_currentPage', currentPage);
@@ -248,7 +309,7 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
   }, [type, retentionSubTab, searchTerm, currentPage, filterFreqAmt, filterFreqUnit, filterTrackStatus, filterOrderStatus]);
 
   useEffect(() => {
-    if (type === 'retention') {
+    if (type?.startsWith('retention')) {
       loadSummaries();
     }
   }, [mockTodayStr]);
@@ -261,6 +322,15 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
   }, [searchTerm]);
 
   useEffect(() => {
+    if (type?.startsWith('retention')) {
+      if (type === 'retention-pending') setRetentionSubTab('pending');
+      else if (type === 'retention-tracked') setRetentionSubTab('tracked');
+      else if (type === 'retention-ordered') setRetentionSubTab('ordered');
+      else if (type === 'retention-all') setRetentionSubTab('all');
+    }
+  }, [type]);
+
+  useEffect(() => {
     fetchLeads();
   }, [currentAdminId, role, activeTab, type, currentPage, debouncedSearch]);
 
@@ -271,7 +341,14 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
       const currentCursor = cursorHistory[currentPage - 1];
 
       let res;
-      if (debouncedSearch.length >= 2) {
+      if (type?.startsWith('retention') && debouncedSearch.length < 2) {
+         const allData = await leadService.getAllRegularCustomers(activeTab === 'my' ? currentAdminId : null);
+         res = {
+            data: allData,
+            lastDoc: null,
+            pagination: { total: allData.length, count: allData.length, hasMore: false }
+         };
+      } else if (debouncedSearch.length >= 2) {
          const searchData = await leadService.searchCustomers(debouncedSearch);
          const adminFiltered = activeTab === 'my' && currentAdminId 
             ? searchData.filter(d => d.responsibleId === currentAdminId) 
@@ -279,9 +356,6 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
          let finalData = stage === 'all' 
             ? adminFiltered 
             : adminFiltered.filter(d => d.stage === stage);
-         if (type === 'new-leads') {
-            finalData = finalData.filter(d => d.status === '🆕 รอดำเนินการ');
-         }
          res = {
             data: finalData,
             lastDoc: null,
@@ -289,7 +363,6 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
          };
       } else {
          const options = {};
-         if (type === 'new-leads') options.status = '🆕 รอดำเนินการ';
          res = await leadService.getCustomersByStagePaginated(stage, activeTab === 'my' ? currentAdminId : null, currentCursor, 50, options);
       }
 
@@ -311,6 +384,16 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+  const refreshSingleLead = async (id) => {
+    if (type?.startsWith('retention')) {
+      const updatedCustomer = await leadService.getCustomerById(id);
+      if (updatedCustomer) {
+        setLeads(prev => prev.map(l => l.id === id ? updatedCustomer : l));
+      }
+    } else {
+      fetchLeads();
     }
   };
 
@@ -729,7 +812,7 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
         stage: 'pool'
       };
       
-      await leadService.addManualLead(mockupData);
+      await leadService.addMockupManualLead(mockupData);
       if (showToast) showToast(`เพิ่มลูกค้าทดสอบ ${randomPhone} สำเร็จแล้ว`);
       fetchLeads(); // refresh the list
     } catch (err) {
@@ -806,7 +889,7 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
       ];
       
       for (const m of mocks) {
-         await leadService.addManualLead(m);
+         await leadService.addMockupManualLead(m);
       }
 
       if (showToast) showToast(`สร้างข้อมูลจำลอง Retention สำเร็จ 5 รายการ`);
@@ -820,7 +903,7 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
 
   const loadSummaries = async () => {
     try {
-      const now = type === 'retention' ? mockToday : new Date();
+      const now = type?.startsWith('retention') ? mockToday : new Date();
       const day = now.getDay();
       const diff = now.getDate() - (day === 0 ? 6 : day - 1);
       const start = new Date(now);
@@ -892,10 +975,10 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
 
     // Filter by action date for admins in all views
     if (!isManager) {
-      const todayVal = type === 'retention' ? mockToday : new Date();
+      const todayVal = type?.startsWith('retention') ? mockToday : new Date();
       const todayStr = getLocalDateString(todayVal);
       const todayTh = todayVal.toLocaleDateString('th-TH');
-      const isDoneToday = type === 'retention'
+      const isDoneToday = type?.startsWith('retention')
         ? getIsFollowedUpChecked(l, mockToday)
         : (l.lastActionDate === todayStr) || (l.lastCallDate === todayTh);
       
@@ -903,9 +986,9 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
       if (filterActionDate === 'not_today' && isDoneToday) return false;
     }
 
-    if (filterStatus === 'all' && type !== 'retention') return true;
+    if (filterStatus === 'all' && !type?.startsWith('retention')) return true;
 
-    if (type === 'retention') {
+    if (type?.startsWith('retention')) {
        if (filterFreqAmt) {
           const amt = parseInt(l.freqAmount) || 1;
           const filterAmt = parseInt(filterFreqAmt);
@@ -919,7 +1002,8 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
 
        const isCompleted = getIsFollowedUpChecked(l, mockToday);
        
-       const dueDate = getNextDueDate(l.lastOrderDate, l.freqAmount, l.freqUnit);
+       const baseDateForDue = l.lastOrderDate || l.lastActionDate || l.lastCallDate;
+       const dueDate = getNextDueDate(baseDateForDue, l.freqAmount, l.freqUnit);
        const endOfMockToday = new Date(mockToday);
        endOfMockToday.setHours(23, 59, 59, 999);
        const isDue = dueDate ? (dueDate <= endOfMockToday) : true;
@@ -974,12 +1058,26 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
     return matchesSearch;
   });
 
-  const todayVal = type === 'retention' ? mockToday : new Date();
+  const isFrontendPagination = type?.startsWith('retention');
+  const pagedData = isFrontendPagination 
+    ? filteredData.slice((currentPage - 1) * 50, currentPage * 50)
+    : filteredData;
+    
+  const displayPagination = isFrontendPagination 
+    ? {
+        total: filteredData.length,
+        count: pagedData.length,
+        hasMore: currentPage < Math.ceil(filteredData.length / 50)
+      }
+    : pagination;
+
+
+  const todayVal = type?.startsWith('retention') ? mockToday : new Date();
   const todayStr = getLocalDateString(todayVal);
   const todayTh = todayVal.toLocaleDateString('th-TH');
 
   const doneTodayCount = leads.filter(l => {
-    if (type === 'retention') {
+    if (type?.startsWith('retention')) {
       return getIsFollowedUpChecked(l, mockToday);
     }
     const isDoneToday = 
@@ -994,6 +1092,65 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
      return <TableSkeleton />;
   }
 
+  const handleToggleGridCell = async (customer, month, week, cellType) => {
+    try {
+      const gridData = customer.gridData || {};
+      const key = `${month}-${week}-${cellType}`;
+      const newGridValue = !gridData[key];
+      const updatedGridData = { ...gridData, [key]: newGridValue };
+
+      const hasFollowup = updatedGridData[`${month}-${week}-followup`] || false;
+      const hasOrder = updatedGridData[`${month}-${week}-order`] || false;
+      let delta = 0;
+      if (cellType === 'followup') {
+        if (newGridValue && !hasOrder) delta = 1;
+        if (!newGridValue && !hasOrder) delta = -1;
+      } else if (cellType === 'order') {
+        if (newGridValue && hasFollowup) delta = -1;
+        if (!newGridValue && hasFollowup) delta = 1;
+      }
+
+      let newAmount = parseInt(customer.freqAmount) || 1;
+      let newUnit = customer.freqUnit || 'สัปดาห์';
+      if (delta !== 0) {
+        newAmount += delta;
+        if (delta > 0) {
+          if (newUnit === 'สัปดาห์' && newAmount > 4) {
+            newAmount = 1;
+            newUnit = 'เดือน';
+          }
+        } else {
+          if (newAmount < 1) {
+            if (newUnit === 'เดือน') {
+              newAmount = 4;
+              newUnit = 'สัปดาห์';
+            } else {
+              newAmount = 1;
+            }
+          }
+        }
+      }
+
+      await leadService.updateCustomer(customer.id || customer.phone, {
+        gridData: updatedGridData,
+        freqAmount: newAmount,
+        freqUnit: newUnit
+      });
+
+      setLeads(prev => prev.map(item => 
+        (item.id === customer.id || item.phone === customer.phone)
+          ? { ...item, gridData: updatedGridData, freqAmount: newAmount, freqUnit: newUnit }
+          : item
+      ));
+    } catch (err) {
+      console.error("Error toggling grid cell:", err);
+    }
+  };
+
+  const handleUpdateCustomerLocal = (id, fields) => {
+    setLeads(prev => prev.map(l => (l.id === id || l.phone === id) ? { ...l, ...fields } : l));
+  };
+
   if (activeTab === 'rentention-grid') {
      return (
        <RetentionTableView 
@@ -1005,13 +1162,15 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
              onCall(l, type === 'master-pool');
            }
          }} 
+         onToggleGridCell={handleToggleGridCell}
+         onUpdateCustomerLocal={handleUpdateCustomerLocal}
        />
      );
   }
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm font-sans">
+    <div className="flex flex-col h-[calc(100vh-140px)] animate-in fade-in duration-500 gap-4">
+      <div className="shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm font-sans relative z-50">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
           <input
@@ -1027,21 +1186,7 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
         </div>
 
         <div className="flex flex-nowrap items-center gap-2">
-           {type === 'retention' ? (
-             <CustomSelect
-               value={retentionSubTab}
-               onChange={e => setRetentionSubTab(e.target.value)}
-               containerClassName="w-56"
-               className="py-2 text-xs font-black"
-               dropdownZIndex={100}
-               options={[
-                 { value: 'all',     label: `ลูกค้าทั้งหมด (${leads.length})` },
-                 { value: 'pending', label: 'รอติดตาม' },
-                 { value: 'ordered', label: 'สั่งซื้อแล้ว' },
-                 { value: 'tracked', label: 'รอติดตามซ้ำ' },
-               ]}
-             />
-           ) : isManager ? (
+           {type?.startsWith('retention') ? null : isManager ? (
              <CustomSelect
                value={filterStatus}
                onChange={e => setFilterStatus(e.target.value)}
@@ -1049,7 +1194,7 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
                className="py-2 text-xs font-black"
                dropdownZIndex={100}
                options={[
-                 { value: 'all', label: `ลูกค้าทั้งหมด (${pagination.total})` },
+                 { value: 'all', label: `ลูกค้าทั้งหมด (${displayPagination.total})` },
                  ...(type !== 'master-pool' ? [
                    { value: 'todo',       label: 'งานที่ค้างมอบหมาย' },
                    { value: 'unassigned', label: 'ยังไม่ได้มอบหมาย' },
@@ -1065,7 +1210,7 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
                className="py-2 text-xs font-black"
                dropdownZIndex={100}
                options={[
-                 { value: 'all',      label: `ลูกค้าทั้งหมด (${leads.length})` },
+                 { value: 'all',      label: `ลูกค้าทั้งหมด (${displayPagination.total})` },
                  { value: 'not_today', label: `วันนี้ (ยังไม่ได้ทำ) (${notDoneTodayCount})` },
                ]}
              />
@@ -1097,32 +1242,13 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
         </div>
       </div>
 
-      {type === 'retention' && (
-        <div className="flex flex-wrap items-center gap-3 bg-white p-3 rounded-2xl border border-slate-100 shadow-sm font-sans">
+      {type?.startsWith('retention') && (
+        <div className="shrink-0 flex flex-wrap items-center gap-3 bg-white p-3 rounded-2xl border border-slate-100 shadow-sm font-sans relative z-40">
           <div className="text-xs font-black text-slate-400 uppercase tracking-widest px-2 border-r border-slate-100">
              ตัวกรองพิเศษ :
           </div>
           
-          {/* Time Machine / Mock Date Selector */}
-          <div className="flex items-center gap-2 px-3 py-1 bg-indigo-50 border border-indigo-100 rounded-xl text-[11px] font-bold text-indigo-700 shadow-inner">
-            <Clock size={12} className="text-indigo-500 animate-pulse" />
-            <span>จำลองวันที่ :</span>
-            <input 
-              type="date"
-              value={mockTodayStr}
-              onChange={(e) => setMockTodayStr(e.target.value)}
-              className="bg-white border border-indigo-200 rounded px-1 py-0.5 text-[11px] text-indigo-700 outline-none focus:border-indigo-400 font-bold cursor-pointer"
-            />
-            {mockTodayStr !== new Date().toISOString().split('T')[0] && (
-              <button 
-                onClick={() => setMockTodayStr(new Date().toISOString().split('T')[0])}
-                title="กลับสู่วันที่ปัจจุบัน"
-                className="p-1 hover:bg-indigo-100 rounded text-indigo-600 transition-all active:scale-95 flex items-center justify-center"
-              >
-                <RotateCcw size={10} />
-              </button>
-            )}
-          </div>
+          
           
           <CustomSelect 
              value={filterFreqAmt}
@@ -1376,16 +1502,16 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
         </div>
       )}
 
-      <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden font-sans">
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse table-fixed">
-            <thead>
-              <tr className="bg-slate-50/50 border-b border-slate-100">
+      <div className="flex-1 min-h-0 bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden font-sans flex flex-col relative z-10">
+        <div className="flex-1 overflow-auto">
+          <table className="w-full border-collapse table-fixed relative">
+            <thead className="sticky top-0 z-50 bg-slate-50/95 backdrop-blur-sm shadow-sm">
+              <tr className="border-b border-slate-200">
                 {isManager && (
                   <th className="px-4 py-4 w-12 text-center">
                     <div 
                       onClick={() => {
-                        const allIds = filteredData.map(l => l.id);
+                        const allIds = pagedData.map(l => l.id);
                         if (allIds.length === 0) return;
                         if (allIds.every(id => selected.includes(id))) {
                           setSelected(prev => prev.filter(id => !allIds.includes(id)));
@@ -1395,7 +1521,7 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
                       }}
                       className="flex items-center justify-center cursor-pointer hover:text-indigo-600 transition-colors"
                     >
-                      {filteredData.length > 0 && filteredData.every(l => selected.includes(l.id))
+                      {pagedData.length > 0 && filteredData.every(l => selected.includes(l.id))
                         ? <CheckSquare size={16} className="text-indigo-600" />
                         : <Square size={16} />
                       }
@@ -1407,7 +1533,7 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
                 {type === 'master-pool' && (
                   <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic w-[18%]">หมวดหมู่ปัจจุบัน</th>
                 )}
-                {type === 'retention' ? (
+                {type?.startsWith('retention') ? (
                   <>
                     <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic w-[15%]">ผู้รับผิดชอบ</th>
                     <th className="px-6 py-4 text-center text-xs font-black text-slate-600 uppercase tracking-widest italic w-[12%]">ติดตามสัปดาห์นี้</th>
@@ -1424,11 +1550,11 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
                     )}
                   </>
                 )}
-                {isManager && type !== 'master-pool' && type !== 'retention' && (
+                {isManager && type !== 'master-pool' && !type?.startsWith('retention') && (
                   <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic w-[15%]">ทำเบอร์ล่าสุดวันไหน</th>
                 )}
-                <th className={`px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic ${type === 'retention' ? 'w-[14%]' : 'w-[11%]'}`}>ความรอบการติดตาม</th>
-                {type !== 'master-pool' && type !== 'retention' && (
+                <th className={`px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic ${type?.startsWith('retention') ? 'w-[14%]' : 'w-[11%]'}`}>ความรอบการติดตาม</th>
+                {type !== 'master-pool' && !type?.startsWith('retention') && (
                   <>
                     <th className="px-6 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-widest italic w-[11%]">Coldcall Rating</th>
                     <th className="px-6 py-4 text-center text-xs font-black text-slate-600 uppercase tracking-widest italic w-[6%]">คะแนนบอท</th>
@@ -1438,12 +1564,12 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {filteredData.length > 0 ? (
-                filteredData.map(l => {
-                  const isCompleted = type === 'retention'
+              {pagedData.length > 0 ? (
+                pagedData.map((l, index) => {
+                  const isCompleted = type?.startsWith('retention')
                     ? getIsFollowedUpChecked(l, mockToday)
                     : (completedThisWeekIds.has(l.id) || completedThisWeekIds.has(l.phone));
-                  const isOrdered = type === 'retention'
+                  const isOrdered = type?.startsWith('retention')
                     ? getIsOrderChecked(l, mockToday)
                     : (l.status === '✅ สั่งซื้อแล้ว' || l.status === 'สั่งซื้อแล้ว');
                   const isAssigned = assignedThisWeekIds.has(l.id) || assignedThisWeekIds.has(l.phone);
@@ -1476,7 +1602,7 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
                         <div className="flex items-center gap-3">
                            <div className="w-10 h-10 rounded-xl bg-slate-50 flex flex-col items-center justify-center border border-slate-100 shadow-inner group-hover:scale-105 transition-transform duration-300">
                               <span className="text-[10px] font-black text-slate-400">NO.</span>
-                              <span className="text-[11px] font-black text-slate-600 leading-none">{l.customerNo || '-'}</span>
+                              <span className="text-[11px] font-black text-slate-600 leading-none">{(currentPage - 1) * 50 + index + 1}</span>
                            </div>
                            <div>
                               <div className={`text-sm font-black text-slate-900 tracking-tight flex items-center gap-2 ${isCompleted ? 'line-through opacity-40' : ''}`}>
@@ -1565,7 +1691,7 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
                            })()}
                          </td>
                        )}
-                      {type === 'retention' ? (
+                      {type?.startsWith('retention') ? (
                         <>
                           {/* 1. ผู้รับผิดชอบ (Responsible Admin) */}
                           <td className="px-6 py-4">
@@ -1590,12 +1716,35 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
 
                           {/* 2. ติดตามสัปดาห์นี้ (Follow-up) */}
                           <td className="px-6 py-4 text-center">
-                            {isCompleted ? (
-                              <span className="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 text-sm font-black shadow-sm transform hover:scale-110 transition-transform duration-300">
-                                ✅
-                              </span>
+                            {type?.startsWith('retention') ? (
+                              <div className="flex items-center justify-center gap-1">
+                                {['จ', 'อ', 'พ', 'พฤ', 'ศ'].map((label, i) => {
+                                  const dateToCheck = currentWeekDays[i];
+                                  const tracked = isDateTracked(l, dateToCheck);
+                                  return (
+                                    <div 
+                                      key={i}
+                                      title={`${label} ${dateToCheck.getDate()}/${dateToCheck.getMonth()+1}`}
+                                      className={`flex flex-col items-center justify-center w-6 h-8 rounded-md border shadow-sm transition-all ${
+                                        tracked 
+                                          ? 'bg-emerald-50 border-emerald-200 text-emerald-600 shadow-emerald-100/50 scale-110 z-10' 
+                                          : 'bg-slate-50 border-slate-100 text-slate-300 scale-95 opacity-70'
+                                      }`}
+                                    >
+                                      <span className="text-[8px] font-black leading-none mb-0.5">{label}</span>
+                                      {tracked ? <CheckSquare size={10} strokeWidth={4} /> : <Square size={10} strokeWidth={2} />}
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             ) : (
-                              <span className="text-slate-200">-</span>
+                              isCompleted ? (
+                                <span className="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 text-sm font-black shadow-sm transform hover:scale-110 transition-transform duration-300">
+                                  ✅
+                                </span>
+                              ) : (
+                                <span className="text-slate-200">-</span>
+                              )
                             )}
                           </td>
 
@@ -1667,7 +1816,7 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
                           )}
                         </>
                       )}
-                      {isManager && type !== 'master-pool' && type !== 'retention' && (
+                      {isManager && type !== 'master-pool' && !type?.startsWith('retention') && (
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform duration-300">
@@ -1699,7 +1848,7 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
                           </div>
                         </div>
                       </td>
-                      {type !== 'master-pool' && type !== 'retention' && (
+                      {type !== 'master-pool' && !type?.startsWith('retention') && (
                         <>
                           <td className="px-6 py-4">
                             <div className="text-xs font-black text-slate-700 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 italic line-clamp-2 max-w-[150px]">
@@ -1772,10 +1921,10 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
         </div>
         
         {/* Pagination Controls */}
-        {(currentPage > 1 || pagination.hasMore) && (
-          <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+        {(currentPage > 1 || displayPagination.hasMore) && (
+          <div className="shrink-0 px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
             <div className="text-xs font-black text-slate-500 uppercase tracking-widest italic">
-              แสดงผลหน้าที่ {currentPage} (รายการที่ {(currentPage - 1) * 50 + 1} - {(currentPage - 1) * 50 + pagination.count} จากทั้งหมด {pagination.total})
+              แสดงผลหน้าที่ {currentPage} (รายการที่ {(currentPage - 1) * 50 + 1} - {(currentPage - 1) * 50 + displayPagination.count} จากทั้งหมด {displayPagination.total})
             </div>
             <div className="flex items-center gap-2">
               <button 
@@ -1793,8 +1942,8 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
 
               <button 
                 onClick={() => setCurrentPage(prev => prev + 1)}
-                disabled={!pagination.hasMore}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all ${!pagination.hasMore ? 'bg-slate-100 text-slate-300 border-slate-100' : 'bg-indigo-600 text-white border-transparent hover:bg-indigo-700 active:scale-95 shadow-lg shadow-indigo-100'}`}
+                disabled={!displayPagination.hasMore}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all ${!displayPagination.hasMore ? 'bg-slate-100 text-slate-300 border-slate-100' : 'bg-indigo-600 text-white border-transparent hover:bg-indigo-700 active:scale-95 shadow-lg shadow-indigo-100'}`}
               >
                 <span className="text-[10px] font-black uppercase tracking-widest">หน้าถัดไป</span>
                 <ChevronRight size={18} />
@@ -1968,9 +2117,7 @@ const CustomerListView = ({ type, setView, activeTab, setActiveTab, currentAdmin
           setSelectedCustomerForEdit(null);
         }}
         customer={selectedCustomerForEdit}
-        onSave={() => {
-          fetchLeads();
-        }}
+        onSave={() => { if (selectedCustomerForEdit) refreshSingleLead(selectedCustomerForEdit.id); else fetchLeads(); }}
         showToast={showToast}
         currentAdminId={currentAdminId}
         currentAdminName={currentAdminName}
